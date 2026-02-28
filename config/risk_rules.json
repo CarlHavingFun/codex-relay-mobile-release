@@ -1,0 +1,22 @@
+[
+  {
+    "id": "mass_delete",
+    "regex": "\\brm\\s+-rf\\b|\\bfind\\b.*-delete|\\bmv\\b.*\\*",
+    "reason": "Potential mass delete/overwrite operation"
+  },
+  {
+    "id": "publish_or_push",
+    "regex": "\\bgit\\s+push\\b|\\brelease\\b|\\bdeploy\\b|\\bpublish\\b",
+    "reason": "Publish/deploy/external write operation"
+  },
+  {
+    "id": "system_config",
+    "regex": "\\blaunchctl\\b|\\bdefaults\\s+write\\b|/Library/",
+    "reason": "System configuration modification"
+  },
+  {
+    "id": "credential_ops",
+    "regex": "\\btoken\\b|\\bsecret\\b|\\bcredential\\b|\\bssh key\\b|\\bcertificate\\b",
+    "reason": "Credential or secret operation"
+  }
+]

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex Relay Mobile 部署指南</title>
+    <style>
+      :root {
+        --bg: #f6f9fc;
+        --card: #ffffff;
+        --ink: #1f2a37;
+        --muted: #526072;
+        --brand: #1463ff;
+        --line: #e5ecf4;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Inter", "PingFang SC", "Noto Sans SC", sans-serif;
+        color: var(--ink);
+        background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 26%);
+      }
+      .wrap { width: min(980px, 94vw); margin: 24px auto 56px; }
+      .hero {
+        background: radial-gradient(circle at 80% -20%, #6ea8ff66 0%, transparent 40%), var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 24px;
+      }
+      h1 { margin: 0 0 8px; font-size: 32px; }
+      .sub { margin: 0; color: var(--muted); line-height: 1.6; }
+      .grid { display: grid; gap: 14px; margin-top: 14px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+      .tile { background: #f9fbff; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+      .tile strong { display: block; margin-bottom: 6px; }
+      .section {
+        margin-top: 16px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px;
+      }
+      h2 { margin: 0 0 10px; font-size: 22px; }
+      h3 { margin: 14px 0 8px; font-size: 17px; }
+      p, li { color: var(--muted); line-height: 1.7; }
+      pre {
+        margin: 10px 0;
+        background: #0f172a;
+        color: #dbeafe;
+        border-radius: 10px;
+        padding: 12px;
+        overflow-x: auto;
+        font-size: 13px;
+      }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .ok {
+        background: #ecfdf3;
+        border: 1px solid #b7e6cb;
+        color: #1f5e3e;
+        border-radius: 10px;
+        padding: 10px;
+      }
+      .tip {
+        background: #fff7e8;
+        border: 1px solid #ffe2ad;
+        color: #7a4c00;
+        border-radius: 10px;
+        padding: 10px;
+      }
+      a { color: var(--brand); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <h1>Codex Relay Mobile 部署指南</h1>
+        <p class="sub">给外部用户的完整版本：服务器部署、mac mini 部署、iOS 连接与验收测试。</p>
+        <div class="grid">
+          <div class="tile"><strong>1. 服务器</strong>Ubuntu 22.04 部署 Relay + HTTPS</div>
+          <div class="tile"><strong>2. 电脑端</strong>mac mini 部署 connector / runner</div>
+          <div class="tile"><strong>3. iOS</strong>填 URL + Token，完成端到端验证</div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>快速入口</h2>
+        <p>同一个脚本入口（按系统自动分流）：</p>
+        <pre><code>./deploy/oneclick.sh auto</code></pre>
+        <p>手动指定模式：</p>
+        <pre><code># mac mini
+./deploy/oneclick.sh macmini
+
+# Ubuntu server
+RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.sh server</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Step 1: 服务器部署（Ubuntu 22.04）</h2>
+        <pre><code>INSTALL_DIR=/opt/codex_relay_mobile RUN_USER=codexrelay ./deploy/server/install_ubuntu22.sh
+RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/server/configure_nginx_tls.sh
+RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh</code></pre>
+        <div class="ok">成功标准：<code>doctor passed</code>，并且 <code>https://你的域名/healthz</code> 可访问。</div>
+      </section>
+
+      <section class="section">
+        <h2>Step 2: mac mini 部署</h2>
+        <pre><code>./deploy/macmini/install.sh
+./deploy/macmini/init-env.sh
+./deploy/macmini/bootstrap.sh
+./deploy/macmini/doctor.sh</code></pre>
+        <p>重点环境变量：</p>
+        <ul>
+          <li><code>RELAY_BASE_URL</code>：填你的公网域名</li>
+          <li><code>RELAY_TOKEN</code>：和服务器一致</li>
+          <li><code>SERVICE_LABEL_PREFIX</code>：默认 <code>com.yourorg.codexrelay</code></li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>Step 3: iOS 连接</h2>
+        <p>App 首次启动进入 <strong>Relay Setup</strong>，填写：</p>
+        <ul>
+          <li>Base URL：<code>https://relay.example.com</code></li>
+          <li>Bearer Token：你的 relay token</li>
+          <li>Workspace：建议 <code>*</code>（或 <code>default</code>）</li>
+        </ul>
+        <div class="ok">状态页应显示：<code>connector_online = ONLINE</code> 与 <code>runner_online = ONLINE</code></div>
+      </section>
+
+      <section class="section">
+        <h2>不影响现网的测试方案（推荐）</h2>
+        <div class="tip">
+          使用“隔离前缀 + 隔离端口 + 隔离 token”，和你现网并行运行，不覆盖当前服务。
+        </div>
+        <h3>服务器侧（同机并行）</h3>
+        <ul>
+          <li>安装目录改为：<code>/opt/codex_relay_mobile_staging</code></li>
+          <li>服务名改为：<code>codex-relay-staging</code></li>
+          <li>端口改为：<code>8794</code></li>
+          <li>Nginx 子路径：<code>/codex-relay-staging/</code></li>
+        </ul>
+        <h3>mac 侧（同机并行）</h3>
+        <ul>
+          <li><code>SERVICE_LABEL_PREFIX=com.yourorg.codexrelay.staging</code></li>
+          <li><code>STATE_DIR=.../state_staging</code></li>
+          <li>使用单独 token 和 workspace（例如 <code>staging</code>）</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>相关文档</h2>
+        <ul>
+          <li><a href="https://my-agent.com.cn/clawdpet-home/">my-agent 首页</a></li>
+          <li>仓库内：<code>ios/IOS_APP_GUIDE.md</code></li>
+          <li>仓库内：<code>docs/deploy/server-ubuntu22.md</code></li>
+          <li>仓库内：<code>docs/deploy/macmini.md</code></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

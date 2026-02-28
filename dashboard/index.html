@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Codex Runner Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4f8f6;
+      --card: #ffffff;
+      --text: #12251f;
+      --muted: #58756a;
+      --ok: #087f5b;
+      --warn: #c98a00;
+      --bad: #c0392b;
+      --line: #dce8e2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: radial-gradient(circle at 0% 0%, #dfeee7 0%, var(--bg) 40%);
+      color: var(--text);
+      padding: 20px;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .sub { color: var(--muted); margin-bottom: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 12px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(12, 37, 30, 0.05);
+    }
+    .label { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .value { font-size: 18px; font-weight: 700; word-break: break-word; }
+    .value.small { font-size: 14px; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    .panel { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 8px; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; }
+    .mono { font-family: inherit; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <h1>Codex Runner Dashboard</h1>
+  <div class="sub">Local state monitor · auto refresh every 3s.</div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Runner</div><div id="runner" class="value">-</div></div>
+    <div class="card"><div class="label">Online</div><div id="online" class="value">-</div></div>
+    <div class="card"><div class="label">Current Task</div><div id="task" class="value small">-</div></div>
+    <div class="card"><div class="label">Last Error</div><div id="error" class="value small">-</div></div>
+
+    <div class="card"><div class="label">Completed</div><div id="completed" class="value">0</div></div>
+    <div class="card"><div class="label">Failed</div><div id="failed" class="value">0</div></div>
+    <div class="card"><div class="label">Rejected</div><div id="rejected" class="value">0</div></div>
+    <div class="card"><div class="label">Updated</div><div id="updated" class="value small">-</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>Pending Approvals</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Task</th><th>State</th><th>Reason</th><th>Updated</th></tr></thead>
+      <tbody id="approvalsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>Recent Events</h3>
+    <table>
+      <thead><tr><th>TS</th><th>Level</th><th>Phase</th><th>Message</th></tr></thead>
+      <tbody id="eventsBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    function clsForOnline(v) {
+      return v ? 'ok' : 'bad';
+    }
+
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${url} failed`);
+      return await res.json();
+    }
+
+    function renderApprovals(items) {
+      const body = document.getElementById('approvalsBody');
+      body.innerHTML = '';
+      const pending = items.filter((x) => x.state === 'pending');
+      if (!pending.length) {
+        body.innerHTML = '<tr><td colspan="5">No pending approvals</td></tr>';
+        return;
+      }
+      for (const item of pending) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${item.id}</td>
+          <td class="mono">${item.task_text || ''}</td>
+          <td class="warn">${item.state}</td>
+          <td class="mono">${(item.risk_reason || []).join(', ')}</td>
+          <td>${item.updated_at || ''}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    function renderEvents(items) {
+      const body = document.getElementById('eventsBody');
+      body.innerHTML = '';
+      for (const event of items.slice(0, 120)) {
+        const levelCls = event.level === 'error' ? 'bad' : event.level === 'warn' ? 'warn' : '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${event.ts || ''}</td>
+          <td class="${levelCls}">${event.level || ''}</td>
+          <td>${event.phase || ''}</td>
+          <td class="mono">${(event.message || '').replace(/</g, '&lt;')}</td>
+        `;
+        body.appendChild(tr);
+      }
+      if (!items.length) {
+        body.innerHTML = '<tr><td colspan="4">No events yet</td></tr>';
+      }
+    }
+
+    async function refresh() {
+      try {
+        const [status, approvals, events] = await Promise.all([
+          fetchJson('/api/status'),
+          fetchJson('/api/approvals'),
+          fetchJson('/api/events?limit=300'),
+        ]);
+
+        document.getElementById('runner').textContent = status.status?.runner_id || '-';
+        const online = !!status.status?.online;
+        const onlineEl = document.getElementById('online');
+        onlineEl.textContent = online ? 'ONLINE' : 'OFFLINE';
+        onlineEl.className = `value ${clsForOnline(online)}`;
+
+        document.getElementById('task').textContent = status.status?.current_task?.text || '-';
+        document.getElementById('error').textContent = status.status?.last_error || '-';
+        document.getElementById('completed').textContent = String(status.progress_summary?.completed ?? 0);
+        document.getElementById('failed').textContent = String(status.progress_summary?.failed ?? 0);
+        document.getElementById('rejected').textContent = String(status.progress_summary?.rejected ?? 0);
+        document.getElementById('updated').textContent = status.status?.updated_at || '-';
+
+        renderApprovals(approvals.approvals || []);
+        renderEvents(events.events || []);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

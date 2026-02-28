@@ -1,0 +1,18 @@
+[Unit]
+Description=Codex Relay Mobile API
+After=network.target
+
+[Service]
+Type=simple
+User={{RUN_USER}}
+WorkingDirectory={{INSTALL_DIR}}
+Environment=NODE_ENV=production
+EnvironmentFile={{ENV_FILE}}
+ExecStart=/usr/bin/env node {{INSTALL_DIR}}/relay/server.js
+Restart=always
+RestartSec=2
+StandardOutput=append:/var/log/codex-relay-mobile.log
+StandardError=append:/var/log/codex-relay-mobile.log
+
+[Install]
+WantedBy=multi-user.target

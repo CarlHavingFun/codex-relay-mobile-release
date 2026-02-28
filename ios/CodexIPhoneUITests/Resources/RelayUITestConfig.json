@@ -1,0 +1,5 @@
+{
+  "base_url": "https://relay.example.com",
+  "token": "replace-with-ui-test-token",
+  "workspace": "*"
+}
