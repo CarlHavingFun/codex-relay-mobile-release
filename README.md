@@ -69,7 +69,7 @@ npm run deploy:site:my-agent
 
 ## GitHub download
 - Repository: `https://github.com/CarlHavingFun/codex-relay-mobile-release`
-- Release package: `https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/tag/v0.1.0`
+- Release package: `https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest`
 
 ## iOS signing template (local only)
 - Example file: `ios/Config/Signing.local.xcconfig.example`

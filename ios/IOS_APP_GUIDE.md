@@ -180,7 +180,7 @@ npm run deploy:smoke:server
 
 ## 相关文档
 - GitHub 仓库：`https://github.com/CarlHavingFun/codex-relay-mobile-release`
-- GitHub Release：`https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/tag/v0.1.1`
+- GitHub Release：`https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest`
 - 网页版详细指南：`https://my-agent.com.cn/clawdpet-home/codex-relay-mobile/`
 - 服务器详版：`docs/deploy/server-ubuntu22.md`
 - mac mini 详版：`docs/deploy/macmini.md`
