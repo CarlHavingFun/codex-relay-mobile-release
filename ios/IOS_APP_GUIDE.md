@@ -93,6 +93,26 @@ npm run connector:start
 # iOS Status 应恢复 online
 ```
 
+## 实机部署测试（Xcode + TestFlight）
+
+### A. Xcode 直连真机（开发阶段）
+
+1. iPhone 连接 Mac，信任设备。
+2. Xcode 打开 `ios/CodexIPhone.xcodeproj`，Scheme 选 `CodexIPhoneApp`。
+3. Signing 选择你的 Team（当前默认 Team: `G836GGPF7C`）。
+4. 选择真机目标，点击 Run 安装 App。
+5. 在手机里按 Step 3 填 `Base URL + Token`，再执行 Step 4 验收流程。
+
+### B. TestFlight（发布前回归）
+
+1. 打包上传到 TestFlight 后，邀请内部测试用户。
+2. 测试用户安装 TestFlight 版本，重新填写 `Base URL + Token`。
+3. 逐项验证：
+   - Status 在线状态（relay/connector/runner）
+   - 创建线程与消息往返
+   - 断连恢复（停 connector 再启动）
+4. 记录是否出现 UI 空白、配置丢失、鉴权失败等问题。
+
 ## 常见问题（按症状）
 
 ### 1) iOS 一直连不上
@@ -159,6 +179,8 @@ npm run deploy:smoke:server
 详见：`docs/testing/nonprod-isolated-testing.md`
 
 ## 相关文档
+- GitHub 仓库：`https://github.com/CarlHavingFun/codex-relay-mobile-release`
+- GitHub Release：`https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/tag/v0.1.1`
 - 网页版详细指南：`https://my-agent.com.cn/clawdpet-home/codex-relay-mobile/`
 - 服务器详版：`docs/deploy/server-ubuntu22.md`
 - mac mini 详版：`docs/deploy/macmini.md`
