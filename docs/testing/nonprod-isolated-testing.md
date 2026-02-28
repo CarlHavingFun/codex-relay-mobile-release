@@ -7,6 +7,13 @@ Run a full end-to-end test without touching your current production relay/mac se
 - mac mini staging (same machine): `npm run deploy:smoke:macmini`
 - server staging (same machine): `npm run deploy:smoke:server`
 
+## Fast teardown scripts
+- mac mini staging cleanup: `npm run deploy:smoke:teardown:macmini`
+- server staging cleanup: `npm run deploy:smoke:teardown:server`
+- remove files/dirs too:
+  - `CLEAN_STATE=1 npm run deploy:smoke:teardown:macmini`
+  - `CLEAN_INSTALL_DIR=1 npm run deploy:smoke:teardown:server`
+
 ## Isolation principle
 - Different service name
 - Different listen port
