@@ -162,6 +162,13 @@ RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh</code></pre>
           <li><code>STATE_DIR=.../state_staging</code></li>
           <li>使用单独 token 和 workspace（例如 <code>staging</code>）</li>
         </ul>
+        <h3>测试后回收</h3>
+        <pre><code>npm run deploy:smoke:teardown:macmini
+npm run deploy:smoke:teardown:server
+
+# 如需清除 staging 文件
+CLEAN_STATE=1 npm run deploy:smoke:teardown:macmini
+CLEAN_INSTALL_DIR=1 npm run deploy:smoke:teardown:server</code></pre>
       </section>
 
       <section class="section">
