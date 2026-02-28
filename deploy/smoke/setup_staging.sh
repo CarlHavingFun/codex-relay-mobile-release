@@ -26,7 +26,7 @@ setup_macmini() {
   local env_file="$ROOT/config/.env.staging"
   cp "$ROOT/config/.env.example" "$env_file"
 
-  local base_url="${STAGING_RELAY_BASE_URL:-https://my-agent.com.cn/codex-relay-staging}"
+  local base_url="${STAGING_RELAY_BASE_URL:-https://relay-staging.example.com}"
   local token="${STAGING_RELAY_TOKEN:-$(rand_token)}"
 
   set_kv() {
@@ -80,7 +80,7 @@ setup_server() {
   local env_file="${STAGING_ENV_FILE:-$install_dir/config/.env.staging}"
   local run_user="${STAGING_RUN_USER:-codexrelay}"
   local relay_port="${STAGING_RELAY_PORT:-8794}"
-  local relay_base_url="${STAGING_RELAY_BASE_URL:-https://my-agent.com.cn/codex-relay-staging}"
+  local relay_base_url="${STAGING_RELAY_BASE_URL:-https://relay-staging.example.com}"
 
   INSTALL_DIR="$install_dir" \
   RUN_USER="$run_user" \
