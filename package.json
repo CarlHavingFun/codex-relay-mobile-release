@@ -33,6 +33,8 @@
     "deploy:site:my-agent": "bash deploy/site/deploy_my_agent_guide.sh",
     "deploy:smoke:macmini": "bash deploy/smoke/setup_staging.sh macmini",
     "deploy:smoke:server": "bash deploy/smoke/setup_staging.sh server",
+    "deploy:smoke:teardown:macmini": "bash deploy/smoke/teardown_staging.sh macmini",
+    "deploy:smoke:teardown:server": "bash deploy/smoke/teardown_staging.sh server",
     "dashboard:start": "bash dashboard/start.sh",
     "dashboard:stop": "bash dashboard/stop.sh",
     "dashboard:status": "bash dashboard/status.sh",
