@@ -3,6 +3,10 @@
 ## Goal
 Run a full end-to-end test without touching your current production relay/mac setup.
 
+## Fast setup scripts
+- mac mini staging (same machine): `npm run deploy:smoke:macmini`
+- server staging (same machine): `npm run deploy:smoke:server`
+
 ## Isolation principle
 - Different service name
 - Different listen port

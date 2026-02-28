@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT/config/.env"
+ENV_FILE="${CONFIG_ENV_FILE:-$ROOT/config/.env}"
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
@@ -32,7 +32,7 @@ cat > "$PLIST" <<EOF
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>cd $ROOT && node $ROOT/runner/chat_connector.js</string>
+    <string>cd $ROOT && CONFIG_ENV_FILE=$ENV_FILE node $ROOT/runner/chat_connector.js</string>
   </array>
   <key>WorkingDirectory</key>
   <string>$ROOT</string>

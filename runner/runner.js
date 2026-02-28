@@ -25,7 +25,8 @@ const {
 } = require('./lib/failover');
 
 const ROOT = path.resolve(__dirname, '..');
-loadEnvIntoProcess(path.join(ROOT, 'config', '.env'));
+const CONFIG_ENV_FILE = process.env.CONFIG_ENV_FILE || path.join(ROOT, 'config', '.env');
+loadEnvIntoProcess(CONFIG_ENV_FILE);
 
 const CONFIG = {
   relayBaseUrl: (process.env.RELAY_BASE_URL || '').replace(/\/$/, ''),

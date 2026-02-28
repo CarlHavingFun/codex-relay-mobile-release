@@ -14,7 +14,7 @@ const {
 } = require('./lib/bridge_helpers');
 
 const ROOT = path.resolve(__dirname, '..');
-const ENV_FILE = path.join(ROOT, 'config', '.env');
+const ENV_FILE = process.env.CONFIG_ENV_FILE || path.join(ROOT, 'config', '.env');
 if (fs.existsSync(ENV_FILE)) {
   const raw = fs.readFileSync(ENV_FILE, 'utf8');
   for (const line of raw.split(/\r?\n/)) {

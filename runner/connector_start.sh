@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT/config/.env"
+ENV_FILE="${CONFIG_ENV_FILE:-$ROOT/config/.env}"
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
 fi
+export CONFIG_ENV_FILE="$ENV_FILE"
 SERVICE_LABEL_PREFIX="${SERVICE_LABEL_PREFIX:-com.yourorg.codexrelay}"
 SESSION="codex_chat_connector"
 LABEL="${SERVICE_LABEL_PREFIX}.chatconnector"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$ROOT/state/chat_connector.log"
 PID_FILE="$ROOT/state/chat_connector.pid"
-CMD="node $ROOT/runner/chat_connector.js >> $LOG 2>&1"
+CMD="CONFIG_ENV_FILE=$ENV_FILE node $ROOT/runner/chat_connector.js >> $LOG 2>&1"
 
 mkdir -p "$ROOT/state"
 

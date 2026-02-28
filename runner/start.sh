@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT/config/.env"
+ENV_FILE="${CONFIG_ENV_FILE:-$ROOT/config/.env}"
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
 fi
+export CONFIG_ENV_FILE="$ENV_FILE"
 SERVICE_LABEL_PREFIX="${SERVICE_LABEL_PREFIX:-com.yourorg.codexrelay}"
 SESSION="codex_runner"
 LABEL="${SERVICE_LABEL_PREFIX}.runner"
@@ -67,7 +68,7 @@ if command -v tmux >/dev/null 2>&1; then
     echo "runner already running in tmux session: $SESSION"
     exit 0
   fi
-  tmux new-session -d -s "$SESSION" "node $ROOT/runner/runner.js >> $LOG 2>&1"
+  tmux new-session -d -s "$SESSION" "CONFIG_ENV_FILE=$ENV_FILE node $ROOT/runner/runner.js >> $LOG 2>&1"
   echo "started tmux session: $SESSION"
   echo "logs: $LOG"
   exit 0
@@ -82,7 +83,7 @@ if [ -f "$PID_FILE" ]; then
   fi
 fi
 
-nohup node "$ROOT/runner/runner.js" >> "$LOG" 2>&1 &
+nohup env CONFIG_ENV_FILE="$ENV_FILE" node "$ROOT/runner/runner.js" >> "$LOG" 2>&1 &
 NEW_PID=$!
 sleep 1
 if kill -0 "$NEW_PID" 2>/dev/null; then

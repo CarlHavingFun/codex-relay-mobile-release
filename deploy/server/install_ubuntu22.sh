@@ -5,8 +5,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 INSTALL_DIR="${INSTALL_DIR:-/opt/codex_relay_mobile}"
 RUN_USER="${RUN_USER:-codexrelay}"
 ENV_FILE="${ENV_FILE:-$INSTALL_DIR/config/.env}"
-SERVICE_NAME="codex-relay"
+SERVICE_NAME="${SERVICE_NAME:-codex-relay}"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+RELAY_BASE_URL_VALUE="${RELAY_BASE_URL_VALUE:-https://relay.example.com}"
+DEFAULT_WORKSPACE_VALUE="${DEFAULT_WORKSPACE_VALUE:-default}"
+CONNECTOR_WORKSPACE_VALUE="${CONNECTOR_WORKSPACE_VALUE:-default}"
+STATE_DIR_VALUE="${STATE_DIR_VALUE:-$INSTALL_DIR/state}"
+RELAY_PORT_VALUE="${RELAY_PORT_VALUE:-}"
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "This installer targets Linux (Ubuntu 22.04)." >&2
@@ -66,10 +71,18 @@ if $SUDO grep -q '^RELAY_TOKEN=replace-with-strong-token' "$ENV_FILE"; then
   $SUDO sed -i "s#^RELAY_TOKEN=.*#RELAY_TOKEN=${TOKEN}#" "$ENV_FILE"
 fi
 
-$SUDO sed -i "s#^RELAY_BASE_URL=.*#RELAY_BASE_URL=https://relay.example.com#" "$ENV_FILE"
-$SUDO sed -i "s#^DEFAULT_WORKSPACE=.*#DEFAULT_WORKSPACE=default#" "$ENV_FILE"
-$SUDO sed -i "s#^CONNECTOR_WORKSPACE=.*#CONNECTOR_WORKSPACE=default#" "$ENV_FILE"
-$SUDO sed -i "s#^STATE_DIR=.*#STATE_DIR=${INSTALL_DIR}/state#" "$ENV_FILE"
+$SUDO sed -i "s#^RELAY_BASE_URL=.*#RELAY_BASE_URL=${RELAY_BASE_URL_VALUE}#" "$ENV_FILE"
+$SUDO sed -i "s#^DEFAULT_WORKSPACE=.*#DEFAULT_WORKSPACE=${DEFAULT_WORKSPACE_VALUE}#" "$ENV_FILE"
+$SUDO sed -i "s#^CONNECTOR_WORKSPACE=.*#CONNECTOR_WORKSPACE=${CONNECTOR_WORKSPACE_VALUE}#" "$ENV_FILE"
+$SUDO sed -i "s#^STATE_DIR=.*#STATE_DIR=${STATE_DIR_VALUE}#" "$ENV_FILE"
+
+if [[ -n "$RELAY_PORT_VALUE" ]]; then
+  if $SUDO grep -q '^RELAY_PORT=' "$ENV_FILE"; then
+    $SUDO sed -i "s#^RELAY_PORT=.*#RELAY_PORT=${RELAY_PORT_VALUE}#" "$ENV_FILE"
+  else
+    echo "RELAY_PORT=${RELAY_PORT_VALUE}" | $SUDO tee -a "$ENV_FILE" >/dev/null
+  fi
+fi
 
 TMP_SERVICE="$(mktemp)"
 sed -e "s#{{RUN_USER}}#${RUN_USER}#g" \

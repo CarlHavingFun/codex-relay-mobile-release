@@ -19,7 +19,8 @@ const {
 const { relayCompletionForTurnStatus } = require('./lib/turn_completion');
 
 const ROOT = path.resolve(__dirname, '..');
-loadEnvIntoProcess(path.join(ROOT, 'config', '.env'));
+const CONFIG_ENV_FILE = process.env.CONFIG_ENV_FILE || path.join(ROOT, 'config', '.env');
+loadEnvIntoProcess(CONFIG_ENV_FILE);
 
 function parseBool(value, fallback = false) {
   if (value == null || value === '') return fallback;

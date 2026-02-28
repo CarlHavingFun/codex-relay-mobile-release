@@ -146,9 +146,20 @@ RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.s
 - mac：独立 `SERVICE_LABEL_PREFIX`（例如 `com.yourorg.codexrelay.staging`）和独立 `STATE_DIR`
 - iOS：创建单独 profile，连接 staging URL + staging token
 
+快速命令：
+
+```bash
+# 在 mac mini 上创建并启动隔离 staging 服务
+npm run deploy:smoke:macmini
+
+# 在 Linux 服务器上创建隔离 staging relay 服务
+npm run deploy:smoke:server
+```
+
 详见：`docs/testing/nonprod-isolated-testing.md`
 
 ## 相关文档
+- 网页版详细指南：`https://my-agent.com.cn/clawdpet-home/codex-relay-mobile/`
 - 服务器详版：`docs/deploy/server-ubuntu22.md`
 - mac mini 详版：`docs/deploy/macmini.md`
 - 上架清单：`docs/appstore/release-checklist.md`

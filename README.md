@@ -67,6 +67,10 @@ RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.s
 npm run deploy:site:my-agent
 ```
 
+## GitHub download
+- Repository: `https://github.com/CarlHavingFun/codex-relay-mobile-release`
+- Release package: `https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/tag/v0.1.0`
+
 ## iOS signing template (local only)
 - Example file: `ios/Config/Signing.local.xcconfig.example`
 - Local file to create: `ios/Config/Signing.local.xcconfig` (gitignored)

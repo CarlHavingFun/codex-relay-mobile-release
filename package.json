@@ -31,6 +31,8 @@
     "deploy:server:nginx-tls": "bash deploy/server/configure_nginx_tls.sh",
     "deploy:server:doctor": "bash deploy/server/doctor.sh",
     "deploy:site:my-agent": "bash deploy/site/deploy_my_agent_guide.sh",
+    "deploy:smoke:macmini": "bash deploy/smoke/setup_staging.sh macmini",
+    "deploy:smoke:server": "bash deploy/smoke/setup_staging.sh server",
     "dashboard:start": "bash dashboard/start.sh",
     "dashboard:stop": "bash dashboard/stop.sh",
     "dashboard:status": "bash dashboard/status.sh",
