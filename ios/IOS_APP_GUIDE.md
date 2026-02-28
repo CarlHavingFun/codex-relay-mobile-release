@@ -174,6 +174,10 @@ npm run deploy:smoke:macmini
 
 # 在 Linux 服务器上创建隔离 staging relay 服务
 npm run deploy:smoke:server
+
+# 测完后回收（不影响生产）
+npm run deploy:smoke:teardown:macmini
+npm run deploy:smoke:teardown:server
 ```
 
 详见：`docs/testing/nonprod-isolated-testing.md`
