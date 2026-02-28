@@ -61,7 +61,7 @@ RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.s
 ```
 
 ## Public web guide
-- Deployed URL: `https://my-agent.com.cn/clawdpet-home/codex-relay-mobile/`
+- Deployed URL: `https://my-agent.com.cn/codex-relay-mobile/`
 - Publish command:
 ```bash
 npm run deploy:site:my-agent
