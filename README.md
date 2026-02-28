@@ -94,6 +94,8 @@ Relay endpoints and fallback compatibility are unchanged:
 - `npm run connector:test`
 - `npm run control-plane:test`
 - `npm run release:preflight`
+- `npm run deploy:smoke:macmini|server`
+- `npm run deploy:smoke:teardown:macmini|server`
 - `npm run runner:start|stop|status|install-launchd|uninstall-launchd`
 - `npm run connector:start|stop|status|install-launchd|uninstall-launchd`
 
