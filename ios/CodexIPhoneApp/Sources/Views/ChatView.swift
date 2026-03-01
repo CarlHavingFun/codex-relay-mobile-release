@@ -28,6 +28,7 @@ struct ChatView: View {
     @State private var isLoadingMoreHistory = false
     @State private var isPlanProgressExpanded = false
     @State private var ignoredUserInputRequestIDs: Set<String> = []
+    @State private var didCopyThreadID = false
     @FocusState private var inputFocused: Bool
 
     private var transcript: [ChatTranscriptMessage] {
@@ -505,6 +506,14 @@ struct ChatView: View {
                     }
                 }
                 .buttonStyle(.plain)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    copyThreadID()
+                } label: {
+                    Image(systemName: didCopyThreadID ? "checkmark.circle.fill" : "doc.on.doc")
+                }
+                .accessibilityIdentifier("chat-copy-thread-id")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 if store.isThreadInFlight(threadID: threadID) {
@@ -1431,6 +1440,15 @@ struct ChatView: View {
         sendMessageToThread(
             text: "请按上面的计划直接开始实施，修改代码并运行必要验证，然后汇报结果。"
         )
+    }
+
+    private func copyThreadID() {
+        UIPasteboard.general.string = threadID
+        didCopyThreadID = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            didCopyThreadID = false
+        }
     }
 
     private func sendMessageToThread(text: String, inputItems: [ChatInputItem] = []) {

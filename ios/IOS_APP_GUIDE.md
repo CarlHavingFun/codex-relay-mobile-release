@@ -26,6 +26,14 @@
 3. 最后打开 iOS App，填 `Base URL + Token`。
 4. 跑一次端到端验收。
 
+如果你要最小门槛的一键电脑配置（托管模式），可直接执行：
+
+```bash
+./deploy/agent/quick_guide.sh
+```
+
+它会自动做依赖检测/安装、检查 Codex 登录态（未登录会引导登录）、生成安全密钥、启动本地 platform-api（本地地址场景）、扫码配对后自动 doctor。
+
 ## 架构一图看懂
 
 ```mermaid
@@ -39,7 +47,7 @@ flowchart LR
 在仓库根目录执行：
 
 ```bash
-INSTALL_DIR=/opt/codex_relay_mobile RUN_USER=codexrelay ./deploy/server/install_ubuntu22.sh
+INSTALL_DIR=/opt/codexiphone RUN_USER=codexrelay ./deploy/server/install_ubuntu22.sh
 RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/server/configure_nginx_tls.sh
 RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh
 ```
@@ -66,7 +74,7 @@ RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh
 `init-env.sh` 里重点填：
 - `RELAY_BASE_URL`：填 Step 1 的域名
 - `RELAY_TOKEN`：填 Step 1 的 token
-- `SERVICE_LABEL_PREFIX`：建议保留默认 `com.yourorg.codexrelay`
+- `SERVICE_LABEL_PREFIX`：建议保留默认 `com.yourorg.codexiphone`
 
 成功标准：
 - `doctor` 输出 `doctor passed`
@@ -181,7 +189,7 @@ RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.s
 使用“并行 staging 环境”，不覆盖你当前生产配置：
 
 - 服务器：独立目录、独立服务名、独立端口（例如 `8794`）、独立 token
-- mac：独立 `SERVICE_LABEL_PREFIX`（例如 `com.yourorg.codexrelay.staging`）和独立 `STATE_DIR`
+- mac：独立 `SERVICE_LABEL_PREFIX`（例如 `com.yourorg.codexiphone.staging`）和独立 `STATE_DIR`
 - iOS：创建单独 profile，连接 staging URL + staging token
 
 快速命令：
@@ -201,10 +209,10 @@ npm run deploy:smoke:teardown:server
 详见：`docs/testing/nonprod-isolated-testing.md`
 
 ## 相关文档
-- GitHub 仓库：`https://github.com/your-org/codex-relay-mobile-release`
-- GitHub Release：`https://github.com/your-org/codex-relay-mobile-release/releases/latest`
-- 网页版详细指南：`https://docs.example.com/codex-relay-mobile/`
+- GitHub 仓库：`https://github.com/CarlHavingFun/codex-relay-mobile-release`
+- GitHub Release：`https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest`
+- 网页版详细指南：`https://my-agent.com.cn/codexiphone/`
 - 服务器详版：`docs/deploy/server-ubuntu22.md`
 - mac mini 详版：`docs/deploy/macmini.md`
 - 上架清单：`docs/appstore/release-checklist.md`
-- 网页版 guide 源码：`docs/site/guide.html`
+- 网页版 guide 源码：`docs/site/codexiphone/index.html`

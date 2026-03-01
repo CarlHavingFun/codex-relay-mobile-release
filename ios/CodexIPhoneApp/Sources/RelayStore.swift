@@ -1550,6 +1550,10 @@ final class RelayStore: ObservableObject {
                 let text = event.delta ?? payloadText ?? ""
                 let attachments = transcriptAttachments(for: event)
 
+                if shouldSuppressInjectedScaffoldingMessage(role: role, text: text, attachments: attachments) {
+                    continue
+                }
+
                 if role == "assistant" {
                     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if attachments.isEmpty,
@@ -1650,6 +1654,31 @@ final class RelayStore: ObservableObject {
         }
         threadTranscriptCache[threadID] = TranscriptCacheEntry(signature: signature, messages: messages)
         return messages
+    }
+
+    private func shouldSuppressInjectedScaffoldingMessage(
+        role: String,
+        text: String,
+        attachments: [ChatTranscriptAttachment]
+    ) -> Bool {
+        guard role == "user" else { return false }
+        guard attachments.isEmpty else { return false }
+
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalized.count >= 120 else { return false }
+
+        let hasAgentsHeader = normalized.contains("# agents.md instructions for ")
+        let hasInstructionsBlock = normalized.contains("<instructions>") && normalized.contains("## skills")
+        let hasSkillListMarker = normalized.contains("### available skills")
+        let hasEnvWrapper = normalized.contains("<environment_context>") && normalized.contains("<cwd>")
+
+        if hasAgentsHeader && hasInstructionsBlock && hasSkillListMarker {
+            return true
+        }
+        if hasEnvWrapper && normalized.contains("<shell>") {
+            return true
+        }
+        return false
     }
 
     private func appendTranscriptMessage(

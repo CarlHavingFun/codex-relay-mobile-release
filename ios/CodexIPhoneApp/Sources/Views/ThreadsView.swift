@@ -9,6 +9,7 @@ struct ThreadsView: View {
     @State private var lastOpenedWorkspace: String = UserDefaults.standard.string(forKey: Self.lastOpenedWorkspaceKey) ?? ""
     @State private var expandedWorkspaceThreads: Set<String> = []
     @State private var isSyncingAllSessions: Bool = false
+    @State private var copiedThreadID: String?
 
     private var filteredGroups: [ChatThreadWorkspaceGroup] {
         let groups = store.threadWorkspaceGroups()
@@ -190,6 +191,9 @@ struct ThreadsView: View {
                         }
                     }
                     HStack(spacing: 8) {
+                        Text(shortThreadID(thread.thread_id))
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
                         if includeWorkspace {
                             Text(thread.workspace)
                                 .font(.caption2)
@@ -221,7 +225,19 @@ struct ThreadsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("thread-row-\(thread.thread_id)")
+        .contextMenu {
+            Button(copiedThreadID == thread.thread_id ? "Copied Thread ID" : "Copy Thread ID") {
+                copyThreadID(thread.thread_id)
+            }
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                copyThreadID(thread.thread_id)
+            } label: {
+                Label("Copy ID", systemImage: copiedThreadID == thread.thread_id ? "checkmark" : "doc.on.doc")
+            }
+            .tint(.gray)
+
             Button {
                 Task {
                     await store.requestSessionSyncIfNeeded(threadID: thread.thread_id)
@@ -238,6 +254,24 @@ struct ThreadsView: View {
                 }
             } label: {
                 Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private func shortThreadID(_ threadID: String) -> String {
+        let trimmed = threadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "ID: -" }
+        let suffix = String(trimmed.suffix(8))
+        return "ID: \(suffix)"
+    }
+
+    private func copyThreadID(_ threadID: String) {
+        UIPasteboard.general.string = threadID
+        copiedThreadID = threadID
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if copiedThreadID == threadID {
+                copiedThreadID = nil
             }
         }
     }

@@ -20,7 +20,7 @@ Required values:
 - `RELAY_BASE_URL`: your public relay URL
 - `RELAY_TOKEN`: shared bearer token
 - `WORKSPACE_PATH`, `PLAN_FILE`: legacy runner compatibility
-- `SERVICE_LABEL_PREFIX`: launchd label prefix (`com.yourorg.codexrelay` by default)
+- `SERVICE_LABEL_PREFIX`: launchd label prefix (`com.yourorg.codexiphone` by default)
 
 ## 3) Start services
 ```bash

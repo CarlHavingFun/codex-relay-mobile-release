@@ -58,6 +58,7 @@ let shuttingDown = false;
 let currentTask = null;
 let authProfiles = [];
 let authProfileState = null;
+let supervisorApiUnavailable = false;
 let runnerState = readJSON(FILES.runnerState, {
   runner_id: CONFIG.runnerId,
   online: false,
@@ -178,7 +179,7 @@ function runWorkspaceSwitchScript(profileId) {
 }
 
 async function reportFailoverEvent(payload) {
-  if (!CONFIG.relayBaseUrl || !CONFIG.supervisorEnabled) return;
+  if (!CONFIG.relayBaseUrl || !CONFIG.supervisorEnabled || supervisorApiUnavailable) return;
   try {
     await httpJson('POST', `${CONFIG.relayBaseUrl}/v2/supervisor/failover/report`, payload);
   } catch (err) {
@@ -299,6 +300,15 @@ function isRelayNotFoundPayload(payload) {
   return String(payload.error || '').trim().toLowerCase() === 'not_found';
 }
 
+function isSupervisorClaimEndpointMissing(err) {
+  const message = String(err?.message || err || '').toLowerCase();
+  return (
+    message.includes('/v2/supervisor/tasks/claim')
+    && message.includes('(404)')
+    && message.includes('not_found')
+  );
+}
+
 async function httpJson(method, url, body, allowCompatRetry = true) {
   const headers = { 'Content-Type': 'application/json' };
   if (CONFIG.relayToken) headers.Authorization = `Bearer ${CONFIG.relayToken}`;
@@ -400,20 +410,34 @@ function normalizeSupervisorTask(task) {
 }
 
 async function claimSupervisorTask() {
-  if (!CONFIG.relayBaseUrl || !CONFIG.supervisorEnabled) return null;
+  if (!CONFIG.relayBaseUrl || !CONFIG.supervisorEnabled || supervisorApiUnavailable) return null;
   const profile = activeProfile();
   const body = {
     workspace: workspaceName(),
     runner_id: CONFIG.runnerId,
     profile_id: profile?.id || null,
   };
-  const json = await httpJson('POST', `${CONFIG.relayBaseUrl}/v2/supervisor/tasks/claim`, body);
+  let json;
+  try {
+    json = await httpJson('POST', `${CONFIG.relayBaseUrl}/v2/supervisor/tasks/claim`, body);
+  } catch (err) {
+    if (isSupervisorClaimEndpointMissing(err)) {
+      supervisorApiUnavailable = true;
+      emitEvent({
+        level: 'warn',
+        phase: 'supervisor.unavailable',
+        message: 'Supervisor claim endpoint unavailable (404 not_found); falling back to PLAN.md tasks only',
+      });
+      return null;
+    }
+    throw err;
+  }
   if (!json?.task) return null;
   return normalizeSupervisorTask(json.task);
 }
 
 async function updateSupervisorTask(task, status, extra = {}) {
-  if (!CONFIG.relayBaseUrl || task?.source !== 'supervisor') return;
+  if (!CONFIG.relayBaseUrl || task?.source !== 'supervisor' || supervisorApiUnavailable) return;
   const taskId = task.supervisor?.id || task.id;
   if (!taskId) return;
   await httpJson('POST', `${CONFIG.relayBaseUrl}/v2/supervisor/tasks/${encodeURIComponent(taskId)}/update`, {

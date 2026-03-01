@@ -410,6 +410,10 @@ ON CONFLICT(workspace) DO UPDATE SET
   updated_at=excluded.updated_at
 WHERE tasks_current.tenant_id = excluded.tenant_id
 `);
+const clearTaskStmt = db.prepare(`
+DELETE FROM tasks_current
+WHERE workspace = ? AND tenant_id = ?
+`);
 
 const selectChatThreadStmt = db.prepare(`SELECT * FROM chat_threads WHERE thread_id = ?`);
 const insertChatThreadStmt = db.prepare(`
@@ -2365,6 +2369,8 @@ const server = http.createServer(async (req, res) => {
           body.updated_at || ts,
           tenantId,
         );
+      } else {
+        clearTaskStmt.run(workspace, tenantId);
       }
 
       json(res, 200, { ok: true, ts });

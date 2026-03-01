@@ -22,17 +22,17 @@ Run a full end-to-end test without touching your current production relay/mac se
 - Different state directory
 
 ## Server side (same machine)
-1. Duplicate install dir to `/opt/codex_relay_mobile_staging`.
+1. Duplicate install dir to `/opt/codexiphone_staging`.
 2. Use separate env file (`config/.env.staging`) with:
    - `RELAY_PORT=8794`
    - `DEFAULT_WORKSPACE=staging`
    - unique `RELAY_TOKEN`
-3. Register `codex-relay-staging.service`.
-4. Expose only under subpath `/codex-relay-staging/` in nginx.
+3. Register `codexiphone-staging.service`.
+4. Expose only under subpath `/codexiphone-staging/` in nginx.
 
 ## mac side (same machine)
 Use a separate env with:
-- `SERVICE_LABEL_PREFIX=com.yourorg.codexrelay.staging`
+- `SERVICE_LABEL_PREFIX=com.yourorg.codexiphone.staging`
 - `STATE_DIR=/path/to/Codex_Iphone_release/state_staging`
 - `CONNECTOR_WORKSPACE=staging`
 - `RELAY_BASE_URL=https://relay-staging.example.com`
@@ -47,7 +47,7 @@ Create a separate profile in app settings:
 - Workspace = `staging`
 
 ## Rollback
-- Stop and disable `codex-relay-staging`
+- Stop and disable `codexiphone-staging`
 - Remove staging nginx location
 - Remove staging launchd services by staging label prefix
 - Keep prod services running throughout

@@ -1,7 +1,7 @@
 # App Store 元数据模板（zh-CN）
 
 ## App 名称
-Agent Relay Mobile
+CodexIPhone
 
 ## 副标题
 自建 Relay 的移动端客户端
@@ -10,7 +10,7 @@ Agent Relay Mobile
 在 iPhone 上连接并管理你自建的 Relay 服务。
 
 ## 描述
-Agent Relay Mobile 是用于自建 Relay 服务与桌面 Connector 的 iOS 客户端。
+CodexIPhone 是用于自建 Relay 服务与桌面 Connector 的 iOS 客户端。
 
 主要能力：
 - 通过 Relay URL + Bearer Token 接入你的服务

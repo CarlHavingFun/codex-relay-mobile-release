@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-exec "$ROOT/deploy/site/deploy_codexiphone_site.sh" "$@"
+exec "$ROOT/deploy/agent/install.sh" "$@"

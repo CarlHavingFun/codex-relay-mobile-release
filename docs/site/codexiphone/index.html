@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodexIPhone 一键安装指南</title>
+    <style>
+      :root {
+        --bg: #f3f6fb;
+        --card: #ffffff;
+        --ink: #1a2433;
+        --muted: #526072;
+        --brand: #0b66ff;
+        --line: #e2e8f0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "PingFang SC", "Noto Sans SC", "Inter", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 90% -10%, #9dc3ff55 0%, transparent 35%), var(--bg);
+      }
+      .wrap { width: min(980px, 94vw); margin: 24px auto 56px; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px;
+        margin-top: 14px;
+      }
+      h1 { margin: 0 0 8px; font-size: 30px; }
+      h2 { margin: 0 0 10px; font-size: 21px; }
+      p, li { color: var(--muted); line-height: 1.7; }
+      pre {
+        margin: 10px 0;
+        background: #0b1220;
+        color: #d9e8ff;
+        border-radius: 10px;
+        padding: 12px;
+        overflow-x: auto;
+        font-size: 13px;
+      }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .ok {
+        background: #ecfdf3;
+        border: 1px solid #b7e6cb;
+        color: #1f5e3e;
+        border-radius: 10px;
+        padding: 10px;
+      }
+      .tip {
+        background: #fff7e8;
+        border: 1px solid #ffe2ad;
+        color: #7a4c00;
+        border-radius: 10px;
+        padding: 10px;
+      }
+      a { color: var(--brand); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .muted { color: var(--muted); font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="card">
+        <h1>CodexIPhone 一键安装（Hosted）</h1>
+        <p>这是面向外部用户的统一安装页面，兼容 macOS / Linux / Windows。执行一条命令后，脚本会自动安装依赖、检查登录、生成扫码配置并启动服务。</p>
+        <p class="muted">默认项目目录：<code>~/.codexiphone/codexiphone</code></p>
+      </section>
+
+      <section class="card">
+        <h2>0) 前置要求</h2>
+        <ul>
+          <li>电脑可联网，且可以访问 <code>my-agent.com.cn</code> 与 GitHub。</li>
+          <li>iPhone 已安装 CodexIPhone App（用于登录和扫码配置）。</li>
+          <li>Windows 建议 PowerShell 5+ 或 PowerShell 7。</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>1) 一条命令安装</h2>
+        <p><strong>macOS / Linux</strong></p>
+        <pre><code>curl -fsSL https://my-agent.com.cn/codexiphone/install.sh | bash</code></pre>
+        <p><strong>Windows（PowerShell）</strong></p>
+        <pre><code>powershell -ExecutionPolicy Bypass -Command "iwr https://my-agent.com.cn/codexiphone/install.ps1 -UseBasicParsing | iex"</code></pre>
+        <p>自定义目录/分支（macOS/Linux）：</p>
+        <pre><code>CODEXIPHONE_INSTALL_ROOT="$HOME/.codexiphone" \
+CODEXIPHONE_REPO_REF="main" \
+curl -fsSL https://my-agent.com.cn/codexiphone/install.sh | bash</code></pre>
+      </section>
+
+      <section class="card">
+        <h2>2) 脚本自动执行内容（详细）</h2>
+        <ol>
+          <li>拉取或更新项目到独立目录 <code>~/.codexiphone/codexiphone</code>。</li>
+          <li>检测并安装基础依赖：<code>node</code>、<code>npm</code>、<code>codex CLI</code>。</li>
+          <li>检查 Codex 登录态：<code>codex login status</code>，未登录则引导完成登录。</li>
+          <li>生成安全配置：自动写入唯一 <code>RELAY_TOKEN</code>、<code>PLATFORM_JWT_SECRET</code>。</li>
+          <li>启动平台 API（本地模式）：迁移数据库并启动 <code>platform-api</code>。</li>
+          <li>生成配对二维码：终端会输出二维码位置，等待手机端扫码确认。</li>
+          <li>安装常驻服务：runner + connector（按系统使用 launchd / systemd / NSSM）。</li>
+          <li>执行 doctor 健康检查：连通性、鉴权、服务状态全部通过后结束。</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>3) 手机端操作（扫码一键配置）</h2>
+        <ol>
+          <li>打开 App，进入登录页，先完成 Hosted 登录（邮箱验证码）。</li>
+          <li>点击扫码，扫描电脑端生成的 setup 二维码。</li>
+          <li>App 自动确认配对并拿到 relay 配置，无需手填长期 token。</li>
+          <li>回到状态页确认 <code>connector_online</code> 和 <code>runner_online</code> 为 ONLINE。</li>
+        </ol>
+        <div class="ok">验收标准：能创建线程并收发消息，doctor 输出 <code>doctor passed</code>。</div>
+      </section>
+
+      <section class="card">
+        <h2>4) 常见问题</h2>
+        <ul>
+          <li><strong>卡在 codex 登录</strong>：手动执行 <code>codex login --device-auth</code> 完成后重试安装命令。</li>
+          <li><strong>Windows 服务未启动</strong>：确认已安装 NSSM，再执行一次安装脚本。</li>
+          <li><strong>扫码后一直 pending</strong>：确认 App 已登录同一账号并成功点击确认。</li>
+          <li><strong>doctor 失败</strong>：查看项目目录下 <code>state/</code> 与 <code>state/platform-api/platform-api.log</code> 日志。</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>5) 维护者发布命令</h2>
+        <pre><code>npm run deploy:site:codexiphone</code></pre>
+        <ul>
+          <li>Guide：<code>https://my-agent.com.cn/codexiphone/</code></li>
+          <li>Install Shell：<code>https://my-agent.com.cn/codexiphone/install.sh</code></li>
+          <li>Install PowerShell：<code>https://my-agent.com.cn/codexiphone/install.ps1</code></li>
+        </ul>
+        <div class="tip">默认仓库：<code>https://github.com/CarlHavingFun/codex-relay-mobile-release.git</code>，可通过环境变量覆盖。</div>
+      </section>
+    </main>
+  </body>
+</html>

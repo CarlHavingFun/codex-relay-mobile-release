@@ -15,6 +15,21 @@ source "$ENV_FILE"
 set +a
 
 FAIL=0
+CODEX_BIN="${CODEX_BIN:-codex}"
+
+if command -v "$CODEX_BIN" >/dev/null 2>&1; then
+  CODEX_STATUS="$("$CODEX_BIN" login status 2>&1 || true)"
+  if echo "$CODEX_STATUS" | grep -qi "logged in"; then
+    echo "[OK] codex login"
+  else
+    echo "[FAIL] codex login"
+    echo "       $CODEX_STATUS"
+    FAIL=1
+  fi
+else
+  echo "[FAIL] codex binary missing: $CODEX_BIN"
+  FAIL=1
+fi
 
 if [[ -z "${RELAY_BASE_URL:-}" ]]; then
   echo "[FAIL] RELAY_BASE_URL missing"

@@ -18,6 +18,10 @@ Get-Content $EnvFile | ForEach-Object {
   $envMap[$k] = $v
 }
 
+if (-not (Get-Command codex -ErrorAction SilentlyContinue)) { throw "codex binary missing" }
+$codexStatus = (& codex login status 2>&1 | Out-String)
+if ($codexStatus -notmatch "Logged in") { throw "codex login missing: $codexStatus" }
+
 if (-not $envMap.ContainsKey("RELAY_BASE_URL")) { throw "RELAY_BASE_URL missing" }
 if (-not $envMap.ContainsKey("RELAY_TOKEN")) { throw "RELAY_TOKEN missing" }
 

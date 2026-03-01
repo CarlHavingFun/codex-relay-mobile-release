@@ -3,7 +3,7 @@
 ## Build/signing
 - [ ] Create local signing file: `ios/Config/Signing.local.xcconfig` from `.example`
 - [ ] Set `DEVELOPMENT_TEAM` in local signing file
-- [ ] Confirm bundle id: `com.yourorg.codexrelay`
+- [ ] Confirm bundle id: `com.carl.codexiphone`
 - [ ] Run preflight:
   - `npm run release:preflight`
 
@@ -15,7 +15,7 @@
 - [ ] Can create thread and send message end-to-end
 
 ## Store metadata (en-US)
-- [ ] App name: Agent Relay Mobile
+- [ ] App name: CodexIPhone
 - [ ] Subtitle
 - [ ] Description
 - [ ] Keywords

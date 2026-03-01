@@ -1,4 +1,4 @@
-# Agent Relay Mobile (Release Edition)
+# CodexIPhone (Release Edition)
 
 This repository is the external-user release variant of `codex_iphone`.
 
@@ -77,16 +77,49 @@ Use a single script entry for both mac mini and server:
 RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.sh server
 ```
 
+## CodexIPhone Quick Guide (single script on user computer)
+For hosted multi-tenant onboarding on a user computer, run:
+
+```bash
+./deploy/agent/quick_guide.sh
+```
+
+What it does automatically:
+- Detect/install `node` + `npm` (best effort by OS)
+- Detect/install `codex` CLI (`@openai/codex`)
+- Auto-generate unique secure secrets in `config/.env` when missing:
+  - `RELAY_TOKEN`
+  - `PLATFORM_JWT_SECRET`
+- Check `codex login status` and auto-trigger login (`--device-auth` or `--with-api-key`)
+- Start local `platform-api` (with migration) when `PLATFORM_BASE_URL` is local
+- Generate pairing QR, wait mobile scan/confirm, claim unique connector token
+- Install/start runner + connector services
+- Run doctor checks automatically
+
 ## Public web guide
-- Deployed URL: `https://docs.example.com/codex-relay-mobile/`
+- Deployed URL: `https://my-agent.com.cn/codexiphone/`
 - Publish command:
 ```bash
-npm run deploy:site
+npm run deploy:site:codexiphone
+```
+
+## CodexIPhone Domain Prefix Installer
+- Dedicated guide path: `https://my-agent.com.cn/codexiphone/`
+- Installer URLs:
+  - `https://my-agent.com.cn/codexiphone/install.sh`
+  - `https://my-agent.com.cn/codexiphone/install.ps1`
+- Publish command:
+```bash
+npm run deploy:site:codexiphone
+```
+- User one-liner (macOS/Linux):
+```bash
+curl -fsSL https://my-agent.com.cn/codexiphone/install.sh | bash
 ```
 
 ## GitHub download
-- Repository: `https://github.com/your-org/codex-relay-mobile-release`
-- Release package: `https://github.com/your-org/codex-relay-mobile-release/releases/latest`
+- Repository: `https://github.com/CarlHavingFun/codex-relay-mobile-release`
+- Release package: `https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest`
 
 ## iOS signing template (local only)
 - Example file: `ios/Config/Signing.local.xcconfig.example`
@@ -118,7 +151,7 @@ Relay endpoints and fallback compatibility are unchanged:
 
 ## Docs
 - iOS app guide (recommended first read): `ios/IOS_APP_GUIDE.md`
-- Public HTML guide source: `docs/site/guide.html`
+- Public HTML guide source: `docs/site/codexiphone/index.html`
 - mac mini deployment: `docs/deploy/macmini.md`
 - Ubuntu relay deployment: `docs/deploy/server-ubuntu22.md`
 - App Store release checklist: `docs/appstore/release-checklist.md`

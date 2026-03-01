@@ -8,7 +8,7 @@
 ## 1) Install relay service
 ```bash
 cd /path/to/Codex_Iphone_release
-INSTALL_DIR=/opt/codex_relay_mobile RUN_USER=codexrelay ./deploy/server/install_ubuntu22.sh
+INSTALL_DIR=/opt/codexiphone RUN_USER=codexrelay ./deploy/server/install_ubuntu22.sh
 ```
 
 What it does:

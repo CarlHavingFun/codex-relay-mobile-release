@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agent Relay Mobile 部署指南</title>
+    <title>CodexIPhone 部署指南</title>
     <style>
       :root {
         --bg: #f6f9fc;
@@ -84,7 +84,7 @@
   <body>
     <main class="wrap">
       <section class="hero">
-        <h1>Agent Relay Mobile 部署指南</h1>
+        <h1>CodexIPhone 部署指南</h1>
         <p class="sub">给外部用户的完整版本：服务器部署、mac mini 部署、iOS 连接与验收测试。</p>
         <div class="grid">
           <div class="tile"><strong>1. 服务器</strong>Ubuntu 22.04 部署 Relay + HTTPS</div>
@@ -115,7 +115,7 @@ RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.s
 
       <section class="section">
         <h2>Step 1: 服务器部署（Ubuntu 22.04）</h2>
-        <pre><code>INSTALL_DIR=/opt/codex_relay_mobile RUN_USER=codexrelay ./deploy/server/install_ubuntu22.sh
+        <pre><code>INSTALL_DIR=/opt/codexiphone RUN_USER=codexrelay ./deploy/server/install_ubuntu22.sh
 RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/server/configure_nginx_tls.sh
 RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh</code></pre>
         <div class="ok">成功标准：<code>doctor passed</code>，并且 <code>https://你的域名/healthz</code> 可访问。</div>
@@ -131,7 +131,7 @@ RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh</code></pre>
         <ul>
           <li><code>RELAY_BASE_URL</code>：填你的公网域名</li>
           <li><code>RELAY_TOKEN</code>：和服务器一致</li>
-          <li><code>SERVICE_LABEL_PREFIX</code>：默认 <code>com.yourorg.codexrelay</code></li>
+          <li><code>SERVICE_LABEL_PREFIX</code>：默认 <code>com.yourorg.codexiphone</code></li>
         </ul>
       </section>
 
@@ -170,14 +170,14 @@ RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh</code></pre>
         </div>
         <h3>服务器侧（同机并行）</h3>
         <ul>
-          <li>安装目录改为：<code>/opt/codex_relay_mobile_staging</code></li>
-          <li>服务名改为：<code>codex-relay-staging</code></li>
+          <li>安装目录改为：<code>/opt/codexiphone_staging</code></li>
+          <li>服务名改为：<code>codexiphone-staging</code></li>
           <li>端口改为：<code>8794</code></li>
-          <li>Nginx 子路径：<code>/codex-relay-staging/</code></li>
+          <li>Nginx 子路径：<code>/codexiphone-staging/</code></li>
         </ul>
         <h3>mac 侧（同机并行）</h3>
         <ul>
-          <li><code>SERVICE_LABEL_PREFIX=com.yourorg.codexrelay.staging</code></li>
+          <li><code>SERVICE_LABEL_PREFIX=com.yourorg.codexiphone.staging</code></li>
           <li><code>STATE_DIR=.../state_staging</code></li>
           <li>使用单独 token 和 workspace（例如 <code>staging</code>）</li>
         </ul>
@@ -193,9 +193,9 @@ CLEAN_INSTALL_DIR=1 npm run deploy:smoke:teardown:server</code></pre>
       <section class="section">
         <h2>相关文档</h2>
         <ul>
-          <li><a href="https://github.com/your-org/codex-relay-mobile-release">GitHub 仓库</a></li>
-          <li><a href="https://github.com/your-org/codex-relay-mobile-release/releases/latest">GitHub Release（Latest）</a></li>
-          <li><a href="https://docs.example.com/codex-relay-mobile/">当前指南入口</a></li>
+          <li><a href="https://github.com/CarlHavingFun/codex-relay-mobile-release">GitHub 仓库</a></li>
+          <li><a href="https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest">GitHub Release（Latest）</a></li>
+          <li><a href="https://my-agent.com.cn/codexiphone/">当前指南入口</a></li>
           <li>仓库内：<code>ios/IOS_APP_GUIDE.md</code></li>
           <li>仓库内：<code>docs/deploy/server-ubuntu22.md</code></li>
           <li>仓库内：<code>docs/deploy/macmini.md</code></li>
