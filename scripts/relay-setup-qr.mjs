@@ -14,6 +14,7 @@ function parseArgs(argv) {
     token: "",
     workspace: "*",
     output: path.join(ROOT, "state", "relay_setup", "relay_setup_qr.png"),
+    printSetupURL: false,
     quiet: false,
   };
 
@@ -38,6 +39,10 @@ function parseArgs(argv) {
     }
     if (arg === "--out") {
       out.output = resolvePath(argv[++i] || "");
+      continue;
+    }
+    if (arg === "--print-setup-url") {
+      out.printSetupURL = true;
       continue;
     }
     if (arg === "--quiet") {
@@ -97,6 +102,7 @@ Options:
   --token <token>     Override bearer token
   --workspace <name>  Workspace value for setup link (default: *)
   --out <path>        Output PNG path (default: state/relay_setup/relay_setup_qr.png)
+  --print-setup-url   Print full setup URL (sensitive: contains token)
   --quiet             Print only machine-friendly output lines
   -h, --help          Show this help
 `);
@@ -133,14 +139,27 @@ async function main() {
     errorCorrectionLevel: "M",
   });
 
-  if (!args.quiet) {
-    console.log("Relay setup QR generated.");
-    console.log(`PNG: ${outputPath}`);
-    console.log(`Base URL: ${baseURL}`);
-    console.log(`Workspace: ${workspace}`);
-    console.log("Deep link:");
+  if (args.quiet) {
+    console.log(`png_path=${outputPath}`);
+    console.log(`base_url=${baseURL}`);
+    console.log(`workspace=${workspace}`);
+    if (args.printSetupURL) {
+      console.log(`setup_url=${setupURL}`);
+    }
+    return;
   }
-  console.log(setupURL);
+
+  console.log("Relay setup QR generated.");
+  console.log(`PNG: ${outputPath}`);
+  console.log(`Base URL: ${baseURL}`);
+  console.log(`Workspace: ${workspace}`);
+  if (args.printSetupURL) {
+    console.log("Setup URL (sensitive):");
+    console.log(setupURL);
+  } else {
+    console.log("Setup URL hidden by default because it contains a sensitive token.");
+    console.log("Use --print-setup-url to output the full URL.");
+  }
 }
 
 main().catch((err) => {

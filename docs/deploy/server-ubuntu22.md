@@ -16,6 +16,7 @@ What it does:
 - creates non-root runtime user
 - syncs repo to `INSTALL_DIR`
 - renders `/etc/systemd/system/codex-relay.service` from template
+- installs watchdog timer (`codex-relay-watchdog.timer`) for health auto-restart
 - starts `codex-relay`
 
 ## 2) Configure HTTPS reverse proxy
@@ -26,6 +27,32 @@ RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/server/con
 ## 3) Verify
 ```bash
 RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh
+```
+
+## 4) Create admin account (owner role)
+
+```bash
+PLATFORM_DATABASE_URL="postgres://codex:codex@127.0.0.1:55432/codex_platform" \
+npm run platform-api:create-admin -- --email admin@example.com --tenant-name admin
+```
+
+Note:
+- Hosted auth uses email OTP flow (no static password).
+- The created account is a tenant membership with `role=owner`.
+
+Watchdog status check:
+
+```bash
+sudo systemctl status codex-relay-watchdog.timer --no-pager
+sudo systemctl status codex-relay-watchdog.service --no-pager
+```
+
+Failure auto-restart test:
+
+```bash
+sudo systemctl kill -s SIGKILL codex-relay
+# wait 1-3 minutes
+sudo systemctl status codex-relay --no-pager
 ```
 
 ## Security checks

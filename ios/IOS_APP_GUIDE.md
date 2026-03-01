@@ -55,6 +55,7 @@ RELAY_DOMAIN=relay.example.com ./deploy/server/doctor.sh
 成功标准：
 - `doctor` 输出 `doctor passed`
 - 能访问 `https://relay.example.com/healthz`
+- `codex-relay-watchdog.timer` 处于 `active`（异常退出可自动重拉）
 
 你需要记下两项给 iOS 和 mac mini：
 - `RELAY_BASE_URL`（例如 `https://relay.example.com`）
@@ -97,11 +98,25 @@ npm run relay:setup:qr
 ```
 
 默认输出：`state/relay_setup/relay_setup_qr.png`。  
-注意：二维码包含明文 token，请按密钥处理（不要外传、截图后及时删除）。
+脚本默认不会打印完整 setup URL（避免 token 泄漏）。如果你确实需要完整 URL，显式执行：
+
+```bash
+npm run relay:setup:qr -- --print-setup-url
+```
+
+注意：二维码与 setup URL 都包含明文 token，请按密钥处理（不要外传、截图后及时删除）。
 
 成功标准：
 - `Status` 页里 `connector_online = ONLINE`
 - `runner_online = ONLINE`
+
+## 重新配对（全量退出）
+
+如果你要重走完整配对流程（例如切换账号或清空旧配置）：
+
+1. 在 App 的 `Login` 或 `Settings` 页面点击 `Sign Out and Reset (Full)`。
+2. App 会清空本地 profile + relay token + hosted session，并回到 `Relay Setup`。
+3. 按 Step 3 重新登录 Hosted 并扫码配对。
 
 ## Step 4: 端到端验收（必须做）
 
@@ -163,6 +178,19 @@ npm run runner:status
 ```bash
 npm run runner:uninstall-launchd && npm run runner:install-launchd
 npm run connector:uninstall-launchd && npm run connector:install-launchd
+```
+
+### 4) Relay 进程意外退出
+- 服务器上检查 watchdog：
+```bash
+sudo systemctl status codex-relay-watchdog.timer --no-pager
+sudo systemctl status codex-relay-watchdog.service --no-pager
+```
+- 做一次自动恢复演练：
+```bash
+sudo systemctl kill -s SIGKILL codex-relay
+# 等待 1-3 分钟后再看状态
+sudo systemctl status codex-relay --no-pager
 ```
 
 ## 运维建议

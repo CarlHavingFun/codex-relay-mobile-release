@@ -604,6 +604,68 @@ final class RelayStore: ObservableObject {
         lastPlatformDevCode = nil
     }
 
+    func fullSignOutAndReset() {
+        pollTask?.cancel()
+        pollTask = nil
+        clearDesktopReloginState()
+
+        for profile in accountProfiles {
+            let tokenRef = trimmed(profile.token_ref)
+            if !tokenRef.isEmpty {
+                secrets.deleteToken(for: tokenRef)
+            }
+        }
+        secrets.deleteToken(for: Self.defaultTokenRef)
+
+        accountProfiles = []
+        activeProfileID = nil
+        persistAccountProfiles()
+
+        baseURL = ""
+        token = ""
+        workspace = ""
+        writeWorkspace = ""
+        UserDefaults.standard.removeObject(forKey: "relay.baseURL")
+        UserDefaults.standard.removeObject(forKey: "relay.token")
+        UserDefaults.standard.removeObject(forKey: "relay.workspace")
+        UserDefaults.standard.removeObject(forKey: "relay.writeWorkspace")
+
+        clearPlatformSession(keepBaseURL: false)
+
+        threadJobs.removeAll()
+        threadEvents.removeAll()
+        threadUserInputRequests.removeAll()
+        threadLastSeq.removeAll()
+        threadTailFetchLimit.removeAll()
+        threadTranscriptCache.removeAll()
+        threadPreferences.removeAll()
+        threadDrafts.removeAll()
+        lastSessionSyncRequestAt.removeAll()
+        threadLastCursorRecoveryAt.removeAll()
+        persistThreadPreferences()
+        persistThreadDrafts()
+
+        status = nil
+        relayRuntimeStatus = nil
+        currentTask = nil
+        events = []
+        approvals = []
+        threads = []
+        remoteWorkspaces = []
+        selectedThreadID = nil
+        usageSummary = nil
+        isUsageLoading = false
+        isLoading = false
+        isSendingMessage = false
+        stoppingThreadIDs.removeAll()
+        errorMessage = nil
+        lastUsageRefreshAt = nil
+        lastWorkspacesRefreshAt = nil
+        refreshNowQueued = false
+        refreshNowNeedsFullThreadList = false
+        isRefreshingNow = false
+    }
+
     private func applyPlatformAuthTokenResponse(
         _ response: PlatformAuthTokenResponse,
         fallbackEmail: String,
@@ -2901,6 +2963,10 @@ final class RelayStore: ObservableObject {
     }
 
     private func persistThreadPreferences() {
+        if threadPreferences.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "chat.threadPreferences")
+            return
+        }
         if let data = try? JSONEncoder().encode(threadPreferences) {
             UserDefaults.standard.set(data, forKey: "chat.threadPreferences")
         }

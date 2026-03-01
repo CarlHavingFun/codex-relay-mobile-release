@@ -98,6 +98,7 @@ curl -fsSL https://my-agent.com.cn/codexiphone/install.sh | bash</code></pre>
           <li>生成安全配置：自动写入唯一 <code>RELAY_TOKEN</code>、<code>PLATFORM_JWT_SECRET</code>。</li>
           <li>启动平台 API（本地模式）：迁移数据库并启动 <code>platform-api</code>。</li>
           <li>生成配对二维码：终端会输出二维码位置，等待手机端扫码确认。</li>
+          <li>安全默认：setup URL 默认不直接输出（避免 token 泄漏），如确需输出需显式加参数。</li>
           <li>安装常驻服务：runner + connector（按系统使用 launchd / systemd / NSSM）。</li>
           <li>执行 doctor 健康检查：连通性、鉴权、服务状态全部通过后结束。</li>
         </ol>
@@ -110,6 +111,7 @@ curl -fsSL https://my-agent.com.cn/codexiphone/install.sh | bash</code></pre>
           <li>点击扫码，扫描电脑端生成的 setup 二维码。</li>
           <li>App 自动确认配对并拿到 relay 配置，无需手填长期 token。</li>
           <li>回到状态页确认 <code>connector_online</code> 和 <code>runner_online</code> 为 ONLINE。</li>
+          <li>如需重走完整配对：在 Login 或 Settings 点击 <code>Sign Out and Reset (Full)</code> 后重新扫码。</li>
         </ol>
         <div class="ok">验收标准：能创建线程并收发消息，doctor 输出 <code>doctor passed</code>。</div>
       </section>
@@ -121,6 +123,7 @@ curl -fsSL https://my-agent.com.cn/codexiphone/install.sh | bash</code></pre>
           <li><strong>Windows 服务未启动</strong>：确认已安装 NSSM，再执行一次安装脚本。</li>
           <li><strong>扫码后一直 pending</strong>：确认 App 已登录同一账号并成功点击确认。</li>
           <li><strong>doctor 失败</strong>：查看项目目录下 <code>state/</code> 与 <code>state/platform-api/platform-api.log</code> 日志。</li>
+          <li><strong>需要输出完整 setup URL</strong>：仅在必要时执行 <code>npm run relay:setup:qr -- --print-setup-url</code>。</li>
         </ul>
       </section>
 

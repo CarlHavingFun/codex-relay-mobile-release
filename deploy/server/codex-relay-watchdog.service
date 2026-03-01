@@ -1,0 +1,11 @@
+[Unit]
+Description=Codex Relay watchdog health check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=SERVICE_NAME={{SERVICE_NAME}}
+Environment=INSTALL_DIR={{INSTALL_DIR}}
+Environment=ENV_FILE={{ENV_FILE}}
+ExecStart={{INSTALL_DIR}}/deploy/server/watchdog_relay.sh

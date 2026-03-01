@@ -13,6 +13,8 @@
 - [ ] Invalid token shows actionable error
 - [ ] Valid URL/token can load status and thread list
 - [ ] Can create thread and send message end-to-end
+- [ ] `Sign Out and Reset (Full)` returns app to `Relay Setup` and can re-pair by QR
+- [ ] `npm run relay:setup:qr` default output does not print `token=`
 
 ## Store metadata (en-US)
 - [ ] App name: CodexIPhone
@@ -45,3 +47,4 @@
 - [ ] Upload to TestFlight succeeds
 - [ ] Internal testing pass
 - [ ] No blocker in crash/analytics smoke checks
+- [ ] Linux relay watchdog timer is active (`codex-relay-watchdog.timer`)

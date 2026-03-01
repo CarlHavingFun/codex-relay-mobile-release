@@ -7,6 +7,12 @@ RUN_USER="${RUN_USER:-codexrelay}"
 ENV_FILE="${ENV_FILE:-$INSTALL_DIR/config/.env}"
 SERVICE_NAME="${SERVICE_NAME:-codex-relay}"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+WATCHDOG_SERVICE_NAME="${WATCHDOG_SERVICE_NAME:-${SERVICE_NAME}-watchdog}"
+WATCHDOG_UNIT_BASENAME="${WATCHDOG_SERVICE_NAME%.service}"
+WATCHDOG_SERVICE_UNIT="${WATCHDOG_UNIT_BASENAME}.service"
+WATCHDOG_TIMER_UNIT="${WATCHDOG_UNIT_BASENAME}.timer"
+WATCHDOG_SERVICE_PATH="/etc/systemd/system/${WATCHDOG_SERVICE_UNIT}"
+WATCHDOG_TIMER_PATH="/etc/systemd/system/${WATCHDOG_TIMER_UNIT}"
 RELAY_BASE_URL_VALUE="${RELAY_BASE_URL_VALUE:-https://relay.example.com}"
 DEFAULT_WORKSPACE_VALUE="${DEFAULT_WORKSPACE_VALUE:-default}"
 CONNECTOR_WORKSPACE_VALUE="${CONNECTOR_WORKSPACE_VALUE:-default}"
@@ -91,13 +97,30 @@ sed -e "s#{{RUN_USER}}#${RUN_USER}#g" \
     "$INSTALL_DIR/relay/deploy/codex-relay.service" > "$TMP_SERVICE"
 $SUDO mv "$TMP_SERVICE" "$SERVICE_PATH"
 
+TMP_WATCHDOG_SERVICE="$(mktemp)"
+sed -e "s#{{SERVICE_NAME}}#${SERVICE_NAME}#g" \
+    -e "s#{{INSTALL_DIR}}#${INSTALL_DIR}#g" \
+    -e "s#{{ENV_FILE}}#${ENV_FILE}#g" \
+    "$INSTALL_DIR/deploy/server/codex-relay-watchdog.service" > "$TMP_WATCHDOG_SERVICE"
+$SUDO mv "$TMP_WATCHDOG_SERVICE" "$WATCHDOG_SERVICE_PATH"
+
+TMP_WATCHDOG_TIMER="$(mktemp)"
+sed -e "s#{{WATCHDOG_SERVICE_UNIT}}#${WATCHDOG_SERVICE_UNIT}#g" \
+    "$INSTALL_DIR/deploy/server/codex-relay-watchdog.timer" > "$TMP_WATCHDOG_TIMER"
+$SUDO mv "$TMP_WATCHDOG_TIMER" "$WATCHDOG_TIMER_PATH"
+
 $SUDO chown -R "$RUN_USER":"$RUN_USER" "$INSTALL_DIR"
 $SUDO chmod 600 "$ENV_FILE"
+$SUDO chmod +x "$INSTALL_DIR/deploy/server/watchdog_relay.sh"
 
 $SUDO systemctl daemon-reload
 $SUDO systemctl enable "$SERVICE_NAME"
 $SUDO systemctl restart "$SERVICE_NAME"
+$SUDO systemctl enable "$WATCHDOG_TIMER_UNIT"
+$SUDO systemctl restart "$WATCHDOG_TIMER_UNIT"
+$SUDO systemctl start "$WATCHDOG_SERVICE_UNIT" || true
 $SUDO systemctl --no-pager --full status "$SERVICE_NAME" || true
+$SUDO systemctl --no-pager --full status "$WATCHDOG_TIMER_UNIT" || true
 
 echo
 echo "Install finished."

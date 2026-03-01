@@ -75,6 +75,44 @@ function logLine(message) {
   console.log(line);
 }
 
+const SECRET_FIELD_PATTERN = /(token|authorization|secret|api[_-]?key|password)/i;
+
+function redactSensitiveText(value) {
+  let out = String(value || '');
+  if (!out) return out;
+  out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]');
+  out = out.replace(/([?&](?:token|access_token|refresh_token|api_key|secret)=)[^&\s]+/gi, '$1[REDACTED]');
+  out = out.replace(/("(?:token|access_token|refresh_token|authorization|secret|api[_-]?key|password)"\s*:\s*")[^"]+(")/gi, '$1[REDACTED]$2');
+  out = out.replace(/\b[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[REDACTED_JWT]');
+  return out;
+}
+
+function redactSecrets(value, depth = 0) {
+  if (depth > 6) return '[REDACTED_DEPTH_LIMIT]';
+  if (typeof value === 'string') return redactSensitiveText(value);
+  if (Array.isArray(value)) return value.map((item) => redactSecrets(item, depth + 1));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (SECRET_FIELD_PATTERN.test(key)) {
+        out[key] = '[REDACTED]';
+      } else {
+        out[key] = redactSecrets(val, depth + 1);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
+function safeJsonForLog(value) {
+  try {
+    return JSON.stringify(redactSecrets(value));
+  } catch {
+    return '{"error":"unserializable_error_payload"}';
+  }
+}
+
 function initFiles() {
   ensureDir(CONFIG.stateDir);
   if (!fs.existsSync(FILES.events)) fs.writeFileSync(FILES.events, '');
@@ -329,14 +367,14 @@ async function httpJson(method, url, body, allowCompatRetry = true) {
     if (res.status === 404 && fallbackUrl) {
       return httpJson(method, fallbackUrl, body, false);
     }
-    throw new Error(`${method} ${url} failed (${res.status}): ${JSON.stringify(json)}`);
+    throw new Error(`${method} ${url} failed (${res.status}): ${safeJsonForLog(json)}`);
   }
   const fallbackUrl = allowCompatRetry ? compatibilityFallbackUrl(url) : null;
   if (fallbackUrl && isRelayNotFoundPayload(json)) {
     return httpJson(method, fallbackUrl, body, false);
   }
   if (json && typeof json === 'object' && json.ok === false && json.error) {
-    throw new Error(`${method} ${url} failed: ${String(json.error)}`);
+    throw new Error(`${method} ${url} failed: ${redactSensitiveText(String(json.error))}`);
   }
   return json;
 }

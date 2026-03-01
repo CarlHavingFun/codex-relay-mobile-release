@@ -123,6 +123,16 @@ struct LoginView: View {
                             syncInputsFromStore()
                         }
                         .disabled(authBusy)
+                        .accessibilityIdentifier("login-signout-hosted")
+                        Button("Sign Out and Reset (Full)", role: .destructive) {
+                            store.fullSignOutAndReset()
+                            authMessage = "Signed out and reset. Please scan a new setup QR to pair again."
+                            scannerMessage = nil
+                            verificationCode = ""
+                            syncInputsFromStore()
+                        }
+                        .disabled(authBusy)
+                        .accessibilityIdentifier("login-signout-full")
                     }
                 }
 

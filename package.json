@@ -8,6 +8,7 @@
     "control-plane:run": "node control-plane/server.js",
     "platform-api:run": "node platform-api/server.js",
     "platform-api:migrate": "node platform-api/migrate.js",
+    "platform-api:create-admin": "node scripts/platform-create-admin.mjs",
     "control-plane:start": "bash control-plane/start.sh",
     "control-plane:stop": "bash control-plane/stop.sh",
     "control-plane:status": "bash control-plane/status.sh",

@@ -60,6 +60,14 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    Button("Sign Out and Reset (Full)", role: .destructive) {
+                        store.fullSignOutAndReset()
+                        refreshLocalConnectionFields()
+                        modelText = store.chatModel
+                        selectedThreadModelText = ""
+                    }
+                    .accessibilityIdentifier("settings-signout-full")
                 }
 
                 Section("Connection") {

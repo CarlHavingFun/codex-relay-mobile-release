@@ -1,0 +1,12 @@
+[Unit]
+Description=Codex Relay watchdog timer
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit={{WATCHDOG_SERVICE_UNIT}}
+
+[Install]
+WantedBy=timers.target
