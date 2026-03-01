@@ -635,7 +635,7 @@ async function syncThreadMetadataToRelay(client, options = {}) {
   const externalThreadId = String(options.externalThreadId || '').trim();
   if (!localThreadId || !externalThreadId) return;
 
-  const fallbackTitle = `Codex Session ${externalThreadId.slice(0, 12)}`;
+  const fallbackTitle = `Desktop Thread ${externalThreadId.slice(0, 12)}`;
   let title = fallbackTitle;
   let workspace = String(options.workspace || '').trim();
 
@@ -1264,7 +1264,7 @@ async function syncSessionsToRelay(client, force = false, requestedThreadId = nu
     const previousUpdatedAt = knownSessionUpdatedAtByThreadId.get(localThreadId);
     const title = normalizeSessionTitle(
       item.preview,
-      `Codex Session ${externalThreadId.slice(0, 12)}`,
+      `Desktop Thread ${externalThreadId.slice(0, 12)}`,
     );
 
     let messages = [];

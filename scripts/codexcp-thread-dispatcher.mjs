@@ -29,9 +29,9 @@ for (const [k, v] of Object.entries(fileEnv)) {
 
 const CONFIG = {
   sourceDb: process.env.SOURCE_RELAY_DB || path.join(ROOT, 'relay', 'data', 'relay.db'),
-  codexcpBaseUrl: String(process.env.CODEXCP_BASE_URL || 'https://my-agent.com.cn/codexcp-relay').replace(/\/$/, ''),
+  codexcpBaseUrl: String(process.env.CODEXCP_BASE_URL || 'https://relay.example.com/codexcp-relay').replace(/\/$/, ''),
   token: process.env.CODEXCP_TOKEN || process.env.RELAY_TOKEN || '',
-  targetWorkspace: process.env.CODEXCP_WORKSPACE || 'codex_tower',
+  targetWorkspace: process.env.CODEXCP_WORKSPACE || 'default',
   groupBy: String(process.env.CODEXCP_GROUP_BY || 'workspace').trim().toLowerCase(),
   stateFile: process.env.CODEXCP_THREAD_STATE_FILE || path.join(ROOT, 'state', 'codexcp_thread_dispatcher_state.json'),
   pollSeconds: Math.max(3, Number(process.env.CODEXCP_POLL_SECONDS || 8)),

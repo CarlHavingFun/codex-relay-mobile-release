@@ -97,7 +97,7 @@
 "settings.field.workspace" = "Workspace";
 "settings.field.language" = "语言";
 "settings.field.show_fine_grained" = "默认显示细粒度任务";
-"settings.connection.help" = "请使用 Relay 网关地址，例如：https://my-agent.com.cn/codexcp-relay";
+"settings.connection.help" = "请使用 Relay 网关地址，例如：https://relay.example.com/codexcp-relay";
 "settings.action.saving" = "保存中...";
 "settings.action.save_connection" = "保存连接";
 "settings.action.refresh_now" = "立即刷新";

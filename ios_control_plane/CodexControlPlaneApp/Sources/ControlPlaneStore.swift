@@ -3,14 +3,14 @@ import SwiftUI
 
 @MainActor
 final class ControlPlaneStore: ObservableObject {
-    private static let defaultBaseURL = "https://my-agent.com.cn/codexcp-relay"
-    private static let legacyBaseURL = "https://my-agent.com.cn/codex-relay"
-    private static let defaultToken = "1c6b943c910f9b8d15e9d274b4c2f44a41ace6698fb042a9"
-    private static let defaultWorkspace = "codex_tower"
+    private static let defaultBaseURL = "https://relay.example.com/codexcp-relay"
+    private static let legacyBaseURL = "https://relay.example.com/codex-relay"
+    private static let defaultToken = ""
+    private static let defaultWorkspace = "default"
 
-    @Published var baseURL: String = "https://my-agent.com.cn/codexcp-relay"
-    @Published var token: String = "1c6b943c910f9b8d15e9d274b4c2f44a41ace6698fb042a9"
-    @Published var workspace: String = "codex_tower"
+    @Published var baseURL: String = "https://relay.example.com/codexcp-relay"
+    @Published var token: String = ""
+    @Published var workspace: String = "default"
     @Published var backendModeLabel: String = "codexcp-supervisor"
     @Published var tasks: [CPTask] = []
     @Published var workspaceGroups: [CPWorkspaceGroup] = []

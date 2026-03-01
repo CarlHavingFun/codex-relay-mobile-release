@@ -6,6 +6,8 @@
   "scripts": {
     "relay:start": "node relay/server.js",
     "control-plane:run": "node control-plane/server.js",
+    "platform-api:run": "node platform-api/server.js",
+    "platform-api:migrate": "node platform-api/migrate.js",
     "control-plane:start": "bash control-plane/start.sh",
     "control-plane:stop": "bash control-plane/stop.sh",
     "control-plane:status": "bash control-plane/status.sh",
@@ -30,11 +32,13 @@
     "deploy:server:install:ubuntu22": "bash deploy/server/install_ubuntu22.sh",
     "deploy:server:nginx-tls": "bash deploy/server/configure_nginx_tls.sh",
     "deploy:server:doctor": "bash deploy/server/doctor.sh",
+    "deploy:site": "bash deploy/site/deploy_my_agent_guide.sh",
     "deploy:site:my-agent": "bash deploy/site/deploy_my_agent_guide.sh",
     "deploy:smoke:macmini": "bash deploy/smoke/setup_staging.sh macmini",
     "deploy:smoke:server": "bash deploy/smoke/setup_staging.sh server",
     "deploy:smoke:teardown:macmini": "bash deploy/smoke/teardown_staging.sh macmini",
     "deploy:smoke:teardown:server": "bash deploy/smoke/teardown_staging.sh server",
+    "relay:setup:qr": "node scripts/relay-setup-qr.mjs",
     "dashboard:start": "bash dashboard/start.sh",
     "dashboard:stop": "bash dashboard/stop.sh",
     "dashboard:status": "bash dashboard/status.sh",
@@ -88,5 +92,10 @@
   },
   "devDependencies": {
     "playwright": "^1.58.2"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "qrcode": "^1.5.4"
   }
 }

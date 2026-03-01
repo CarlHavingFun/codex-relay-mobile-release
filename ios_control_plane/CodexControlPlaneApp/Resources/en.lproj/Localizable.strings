@@ -97,7 +97,7 @@
 "settings.field.workspace" = "Workspace";
 "settings.field.language" = "Language";
 "settings.field.show_fine_grained" = "Show fine-grained tasks by default";
-"settings.connection.help" = "Use Relay gateway base URL, for example: https://my-agent.com.cn/codexcp-relay";
+"settings.connection.help" = "Use Relay gateway base URL, for example: https://relay.example.com/codexcp-relay";
 "settings.action.saving" = "Saving...";
 "settings.action.save_connection" = "Save Connection";
 "settings.action.refresh_now" = "Refresh Now";

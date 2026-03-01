@@ -15,19 +15,15 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yourorg.codexrelay
-        PRODUCT_NAME: CodexRelayMobile
+        PRODUCT_BUNDLE_IDENTIFIER: com.carl.codexiphone
+        PRODUCT_NAME: CodexIPhone
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: G836GGPF7C
         TARGETED_DEVICE_FAMILY: 1
         MARKETING_VERSION: 1.0.3
-        CURRENT_PROJECT_VERSION: 6
-        INFOPLIST_KEY_CFBundleDisplayName: Codex Relay Mobile
-        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone:
-          - UIInterfaceOrientationPortrait
-        GENERATE_INFOPLIST_FILE: YES
+        CURRENT_PROJECT_VERSION: 2026030101
+        INFOPLIST_FILE: Config/AppInfo.plist
+        GENERATE_INFOPLIST_FILE: NO
   CodexIPhoneUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -39,9 +35,10 @@ targets:
       - target: CodexIPhoneApp
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yourorg.codexrelay.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: com.carl.codexiphone.uitests
         PRODUCT_NAME: CodexIPhoneUITests
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: G836GGPF7C
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   CodexIPhoneApp:

@@ -264,7 +264,7 @@ struct ThreadsView: View {
 
     private func sourceTag(for source: String) -> String? {
         let value = source.lowercased()
-        if value.contains("session") { return "Codex Session" }
+        if value.contains("session") { return "Desktop Thread" }
         if value == "ios" { return "iPhone" }
         if value == "connector" { return "Connector" }
         return nil

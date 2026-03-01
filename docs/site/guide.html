@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Codex Relay Mobile 部署指南</title>
+    <title>Agent Relay Mobile 部署指南</title>
     <style>
       :root {
         --bg: #f6f9fc;
@@ -66,6 +66,17 @@
         border-radius: 10px;
         padding: 10px;
       }
+      .must {
+        margin-top: 14px;
+        background: #fff1f1;
+        border: 1px solid #ffc7c7;
+        color: #7e1f1f;
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .must ul {
+        margin: 8px 0 0 18px;
+      }
       a { color: var(--brand); text-decoration: none; }
       a:hover { text-decoration: underline; }
     </style>
@@ -73,12 +84,20 @@
   <body>
     <main class="wrap">
       <section class="hero">
-        <h1>Codex Relay Mobile 部署指南</h1>
+        <h1>Agent Relay Mobile 部署指南</h1>
         <p class="sub">给外部用户的完整版本：服务器部署、mac mini 部署、iOS 连接与验收测试。</p>
         <div class="grid">
           <div class="tile"><strong>1. 服务器</strong>Ubuntu 22.04 部署 Relay + HTTPS</div>
           <div class="tile"><strong>2. 电脑端</strong>mac mini 部署 connector / runner</div>
           <div class="tile"><strong>3. iOS</strong>填 URL + Token，完成端到端验证</div>
+        </div>
+        <div class="must">
+          <strong>前提条件（必须满足）</strong>
+          <ul>
+            <li>你需要自行搭建公网 Relay 服务器。</li>
+            <li>你需要一台可登录 Codex 的桌面/Mac 设备，并持续实时运行 connector/runner。</li>
+          </ul>
+          <p>缺少任一项，iOS App 无法完成完整链路（状态、线程、消息和任务执行）。</p>
         </div>
       </section>
 
@@ -174,9 +193,9 @@ CLEAN_INSTALL_DIR=1 npm run deploy:smoke:teardown:server</code></pre>
       <section class="section">
         <h2>相关文档</h2>
         <ul>
-          <li><a href="https://github.com/CarlHavingFun/codex-relay-mobile-release">GitHub 仓库</a></li>
-          <li><a href="https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest">GitHub Release（Latest）</a></li>
-          <li><a href="https://my-agent.com.cn/codex-relay-mobile/">当前指南入口</a></li>
+          <li><a href="https://github.com/your-org/codex-relay-mobile-release">GitHub 仓库</a></li>
+          <li><a href="https://github.com/your-org/codex-relay-mobile-release/releases/latest">GitHub Release（Latest）</a></li>
+          <li><a href="https://docs.example.com/codex-relay-mobile/">当前指南入口</a></li>
           <li>仓库内：<code>ios/IOS_APP_GUIDE.md</code></li>
           <li>仓库内：<code>docs/deploy/server-ubuntu22.md</code></li>
           <li>仓库内：<code>docs/deploy/macmini.md</code></li>

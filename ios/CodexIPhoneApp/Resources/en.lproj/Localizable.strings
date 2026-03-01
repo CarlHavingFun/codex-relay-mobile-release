@@ -1,0 +1,19 @@
+"plan.progress.asking_questions" = "Asking %d questions on iPhone.";
+"plan.progress.waiting_answers" = "Waiting for your answers on iPhone.";
+"plan.progress.collapse_details" = "Collapse details";
+"plan.progress.expand_details" = "Expand details";
+
+"plan.user_input.title" = "Plan selection required";
+"plan.user_input.ignore" = "Ignore";
+"plan.user_input.submitting" = "Submitting...";
+"plan.user_input.submit" = "Submit";
+"plan.user_input.pending_compact" = "Pending questions (%d)";
+"plan.user_input.restore" = "Restore";
+"plan.user_input.recommended" = "Recommended";
+"plan.user_input.other_placeholder" = "Other...";
+"plan.user_input.answer_placeholder" = "Type your answer...";
+
+"plan.proposed_plan.title" = "Implementation Plan";
+
+"settings.plan.default_collapsed" = "Plan default collapse internal progress";
+"settings.plan.default_collapsed.description" = "Plan sessions show only key states by default; expand in-session to view full internal progress.";

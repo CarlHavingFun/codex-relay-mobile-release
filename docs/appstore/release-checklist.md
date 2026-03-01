@@ -15,7 +15,7 @@
 - [ ] Can create thread and send message end-to-end
 
 ## Store metadata (en-US)
-- [ ] App name: Codex Relay Mobile
+- [ ] App name: Agent Relay Mobile
 - [ ] Subtitle
 - [ ] Description
 - [ ] Keywords

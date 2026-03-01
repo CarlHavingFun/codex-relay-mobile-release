@@ -29,9 +29,9 @@ open CodexControlPlaneIPhone.xcodeproj
 
 ## App 内配置
 
-- Base URL: `https://my-agent.com.cn/codexcp-relay`
+- Base URL: `https://relay.example.com/codexcp-relay`
 - Token: Relay Bearer Token
-- Workspace: `codex_tower`（或你的目标 workspace）
+- Workspace: `default`（或你的目标 workspace）
 
 ## 说明
 

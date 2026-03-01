@@ -1,9 +1,9 @@
 // Copy this file to Signing.local.xcconfig and set your Apple Developer Team ID.
 // This file must stay local and should not be committed.
-DEVELOPMENT_TEAM = YOURTEAMID
+DEVELOPMENT_TEAM = G836GGPF7C
 CODE_SIGN_STYLE = Automatic
 
 // Optional overrides:
-// PRODUCT_BUNDLE_IDENTIFIER = com.yourorg.codexrelay
+// PRODUCT_BUNDLE_IDENTIFIER = com.carl.codexiphone
 // CODE_SIGN_IDENTITY = Apple Development
 // PROVISIONING_PROFILE_SPECIFIER =

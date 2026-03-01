@@ -3,9 +3,9 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var store: RelayStore
     @Environment(\.openURL) private var openURL
-    @State private var workspaceText: String = UserDefaults.standard.string(forKey: "relay.workspace") ?? "*"
-    @State private var writeWorkspaceText: String = UserDefaults.standard.string(forKey: "relay.writeWorkspace") ?? "default"
-    @State private var modelText: String = UserDefaults.standard.string(forKey: "chat.model") ?? "gpt-5.3-codex"
+    @State private var workspaceText: String = UserDefaults.standard.string(forKey: "relay.workspace") ?? ""
+    @State private var writeWorkspaceText: String = UserDefaults.standard.string(forKey: "relay.writeWorkspace") ?? ""
+    @State private var modelText: String = UserDefaults.standard.string(forKey: "chat.model") ?? ""
     @State private var selectedThreadModelText: String = ""
     @State private var profileNameDraft: String = ""
     @State private var isCreateProfileAlertPresented = false
@@ -172,6 +172,16 @@ struct SettingsView: View {
                         set: { store.setShowThinkingMessages($0) }
                     ))
                     Text("Includes thinking + tool/lifecycle/system logs. Off matches desktop's cleaner history view.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle(t("settings.plan.default_collapsed", "Plan default collapse internal progress"), isOn: Binding(
+                        get: { store.planProgressDefaultCollapsed },
+                        set: { store.setPlanProgressDefaultCollapsed($0) }
+                    ))
+                    Text(t(
+                        "settings.plan.default_collapsed.description",
+                        "Plan sessions show only key states by default; expand in-session to view full internal progress."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -484,6 +494,10 @@ struct SettingsView: View {
         let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "-"
         let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "-"
         return "\(version) (\(build))"
+    }
+
+    private func t(_ key: String, _ fallback: String) -> String {
+        NSLocalizedString(key, tableName: nil, bundle: .main, value: fallback, comment: "")
     }
 
     private static let numberFormatter: NumberFormatter = {

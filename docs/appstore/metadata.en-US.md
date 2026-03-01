@@ -1,7 +1,7 @@
 # App Store Metadata Template (en-US)
 
 ## App Name
-Codex Relay Mobile
+Agent Relay Mobile
 
 ## Subtitle
 Self-hosted mobile relay client
@@ -10,7 +10,7 @@ Self-hosted mobile relay client
 Connect your self-hosted relay infrastructure from iPhone.
 
 ## Description
-Codex Relay Mobile is an iOS client for teams and individuals who run their own relay server and desktop connector.
+Agent Relay Mobile is an iOS client for teams and individuals who run their own relay server and desktop connector.
 
 Key features:
 - Connect to a custom Relay URL with Bearer token

@@ -1,6 +1,11 @@
-# Codex Relay Mobile (Release Edition)
+# Agent Relay Mobile (Release Edition)
 
 This repository is the external-user release variant of `codex_iphone`.
+
+## Local Development Rule (This Machine)
+- Source-of-truth code edits must be made in this repo path:
+  - `/Volumes/M2_Ext/Projects/Codex_Iphone_release`
+- Use `/Volumes/M2_Ext/Projects/Codex_Xcode_Migrated/Users/Carl/Desktop/codex_iphone` only as a mirror unless explicitly requested.
 
 ## Goals
 - Keep relay/connector API semantics and compatibility unchanged.
@@ -20,6 +25,12 @@ This repository is the external-user release variant of `codex_iphone`.
 - `docs/`: deployment and App Store release docs.
 
 ## Quick start (self-hosted)
+
+### Hard prerequisites
+- You must deploy your own public Relay server.
+- You must keep one Codex-capable desktop/Mac device signed in and running connector/runner in real time.
+
+If either requirement is missing, the iOS app cannot complete the full relay workflow.
 
 ### 1) mac mini (desktop side)
 ```bash
@@ -48,6 +59,12 @@ In app first launch:
 2. Input `Bearer Token`.
 3. Keep workspace `*` or set a fixed workspace.
 
+Optional (recommended): generate setup QR and scan with iPhone Camera to auto-fill.
+```bash
+npm run relay:setup:qr
+```
+Default output: `state/relay_setup/relay_setup_qr.png` (contains token, handle as secret).
+
 ## One-click entry
 Use a single script entry for both mac mini and server:
 
@@ -61,15 +78,15 @@ RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=ops@example.com ./deploy/oneclick.s
 ```
 
 ## Public web guide
-- Deployed URL: `https://my-agent.com.cn/codex-relay-mobile/`
+- Deployed URL: `https://docs.example.com/codex-relay-mobile/`
 - Publish command:
 ```bash
-npm run deploy:site:my-agent
+npm run deploy:site
 ```
 
 ## GitHub download
-- Repository: `https://github.com/CarlHavingFun/codex-relay-mobile-release`
-- Release package: `https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest`
+- Repository: `https://github.com/your-org/codex-relay-mobile-release`
+- Release package: `https://github.com/your-org/codex-relay-mobile-release/releases/latest`
 
 ## iOS signing template (local only)
 - Example file: `ios/Config/Signing.local.xcconfig.example`
@@ -77,9 +94,9 @@ npm run deploy:site:my-agent
 - `scripts/release_preflight.sh` auto-detects this file and applies `-xcconfig`.
 
 ## Runtime defaults
-- `DEFAULT_WORKSPACE=default`
-- `CONNECTOR_WORKSPACE=default`
-- `SERVICE_LABEL_PREFIX=com.yourorg.codexrelay`
+- `DEFAULT_WORKSPACE=codex_iphone`
+- `CONNECTOR_WORKSPACE=codex_iphone`
+- `SERVICE_LABEL_PREFIX=com.carl.codexiphone`
 
 Launchd labels become:
 - `${SERVICE_LABEL_PREFIX}.runner`

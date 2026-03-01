@@ -3,13 +3,15 @@ import SwiftUI
 
 @MainActor
 final class RelayStore: ObservableObject {
-    private static let defaultWriteWorkspace = "default"
+    private static let defaultWriteWorkspace = ""
+    private static let operationalWorkspaceFallback = "default"
+    private static let releasePrivacyResetKey = "relay.releasePrivacyReset.v20260301"
     private static let defaultSecretService: String = {
         let bundle = Bundle.main.bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !bundle.isEmpty {
             return "\(bundle).relay"
         }
-        return "com.yourorg.codexrelay.relay"
+        return "com.carl.codexiphone.relay"
     }()
     private static let threadEventsInitialTailLimit = 240
     private static let threadEventsTailStep = 240
@@ -24,17 +26,31 @@ final class RelayStore: ObservableObject {
 
     @Published var baseURL: String = UserDefaults.standard.string(forKey: "relay.baseURL") ?? ""
     @Published var token: String = UserDefaults.standard.string(forKey: "relay.token") ?? ""
-    @Published var workspace: String = UserDefaults.standard.string(forKey: "relay.workspace") ?? "*"
+    @Published var workspace: String = UserDefaults.standard.string(forKey: "relay.workspace") ?? ""
     @Published var writeWorkspace: String = UserDefaults.standard.string(forKey: "relay.writeWorkspace") ?? RelayStore.defaultWriteWorkspace
+    @Published var platformBaseURL: String = UserDefaults.standard.string(forKey: "platform.baseURL") ?? ""
+    @Published var platformAccessToken: String = UserDefaults.standard.string(forKey: "platform.accessToken") ?? ""
+    @Published var platformEmail: String = UserDefaults.standard.string(forKey: "platform.email") ?? ""
+    @Published var platformTenantID: String = UserDefaults.standard.string(forKey: "platform.tenantID") ?? ""
+    @Published var platformUserID: String = UserDefaults.standard.string(forKey: "platform.userID") ?? ""
+    @Published var platformAccessTokenExpiresAt: String = UserDefaults.standard.string(forKey: "platform.accessTokenExpiresAt") ?? ""
+    @Published private(set) var isPlatformAuthLoading = false
+    @Published private(set) var lastPlatformDevCode: String?
     @Published var pollSeconds: Int = UserDefaults.standard.integer(forKey: "relay.pollSeconds") == 0 ? 3 : UserDefaults.standard.integer(forKey: "relay.pollSeconds")
     @Published var chatMode: String = UserDefaults.standard.string(forKey: "chat.mode") ?? "default"
-    @Published var chatModel: String = UserDefaults.standard.string(forKey: "chat.model") ?? "gpt-5.3-codex"
+    @Published var chatModel: String = UserDefaults.standard.string(forKey: "chat.model") ?? ""
     @Published var chatReasoningEffort: String = UserDefaults.standard.string(forKey: "chat.reasoningEffort") ?? "xhigh"
     @Published var showThinkingMessages: Bool = {
         if UserDefaults.standard.object(forKey: "chat.showThinkingMessages") == nil {
             return false
         }
         return UserDefaults.standard.bool(forKey: "chat.showThinkingMessages")
+    }()
+    @Published var planProgressDefaultCollapsed: Bool = {
+        if UserDefaults.standard.object(forKey: "chat.planProgressDefaultCollapsed") == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "chat.planProgressDefaultCollapsed")
     }()
     @Published var accountProfiles: [RelayAccountProfile] = RelayStore.loadAccountProfilesStorage()
     @Published var activeProfileID: String? = UserDefaults.standard.string(forKey: "relay.activeProfileID")
@@ -74,6 +90,7 @@ final class RelayStore: ObservableObject {
     private var isRefreshingNow = false
     private var refreshNowQueued = false
     private var refreshNowNeedsFullThreadList = false
+    private var platformRefreshToken: String = UserDefaults.standard.string(forKey: "platform.refreshToken") ?? ""
 
     private let client = RelayClient()
     private let secrets = RelaySecretStore(service: RelayStore.defaultSecretService)
@@ -87,6 +104,58 @@ final class RelayStore: ObservableObject {
             return [:]
         }
         return decoded
+    }
+
+    private func applyReleasePrivacyResetIfNeeded() {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: Self.releasePrivacyResetKey) {
+            return
+        }
+        defaults.set(true, forKey: Self.releasePrivacyResetKey)
+
+        for profile in accountProfiles {
+            let tokenRef = trimmed(profile.token_ref)
+            if !tokenRef.isEmpty {
+                secrets.deleteToken(for: tokenRef)
+            }
+        }
+        secrets.deleteToken(for: Self.defaultTokenRef)
+
+        let keysToRemove = [
+            "relay.baseURL",
+            "relay.token",
+            "relay.workspace",
+            "relay.writeWorkspace",
+            "relay.accountProfiles",
+            "relay.activeProfileID",
+            "chat.model",
+            "platform.baseURL",
+            "platform.accessToken",
+            "platform.refreshToken",
+            "platform.email",
+            "platform.tenantID",
+            "platform.userID",
+            "platform.accessTokenExpiresAt"
+        ]
+        for key in keysToRemove {
+            defaults.removeObject(forKey: key)
+        }
+
+        baseURL = ""
+        token = ""
+        workspace = ""
+        writeWorkspace = ""
+        platformBaseURL = ""
+        platformAccessToken = ""
+        platformRefreshToken = ""
+        platformEmail = ""
+        platformTenantID = ""
+        platformUserID = ""
+        platformAccessTokenExpiresAt = ""
+        lastPlatformDevCode = nil
+        chatModel = ""
+        accountProfiles = []
+        activeProfileID = nil
     }
 
     private static func loadThreadDraftsStorage() -> [String: String] {
@@ -150,18 +219,30 @@ final class RelayStore: ObservableObject {
         !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var hasPlatformSession: Bool {
+        !trimmed(platformAccessToken).isEmpty || !trimmed(platformRefreshToken).isEmpty
+    }
+
+    func userFacingError(_ error: Error) -> String {
+        userFacingErrorMessage(error)
+    }
+
     func bootstrap() async {
+        applyReleasePrivacyResetIfNeeded()
         migrateTokenStorageIfNeeded()
         if let activeProfileID, !accountProfiles.contains(where: { $0.id == activeProfileID }) {
             self.activeProfileID = nil
             UserDefaults.standard.removeObject(forKey: "relay.activeProfileID")
         }
-        if token.isEmpty {
+        if token.isEmpty && !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             token = secrets.loadToken(for: currentTokenRef()) ?? ""
         }
         if isUITestSeedModeEnabled {
             seedUITestThreadsIfNeeded()
             return
+        }
+        if !isConfigured, hasPlatformSession {
+            try? await fetchPlatformBootstrapAndApply()
         }
         if isConfigured {
             startPolling()
@@ -177,16 +258,37 @@ final class RelayStore: ObservableObject {
         let envBaseURL = trimmed(env["CODEX_RELAY_BASE_URL"])
         let envToken = trimmed(env["CODEX_RELAY_TOKEN"])
         let envWorkspace = trimmed(env["CODEX_RELAY_WORKSPACE"])
+        let envPlatformBaseURL = trimmed(env["CODEX_PLATFORM_BASE_URL"])
+        let envPlatformAccessToken = trimmed(env["CODEX_PLATFORM_ACCESS_TOKEN"])
+        let envPlatformRefreshToken = trimmed(env["CODEX_PLATFORM_REFRESH_TOKEN"])
+        let envPlatformEmail = trimmed(env["CODEX_PLATFORM_EMAIL"])
         let envPoll = trimmed(env["CODEX_RELAY_POLL_SECONDS"])
         let envMode = trimmed(env["CODEX_CHAT_MODE"])
         let envModel = trimmed(env["CODEX_CHAT_MODEL"])
         let envEffort = trimmed(env["CODEX_CHAT_REASONING_EFFORT"])
+        let envShowThinking = boolFromEnv(env["CODEX_CHAT_SHOW_THINKING_MESSAGES"])
+        let envPlanCollapsed = boolFromEnv(env["CODEX_CHAT_PLAN_PROGRESS_COLLAPSED"])
 
         if !envBaseURL.isEmpty || !envToken.isEmpty || !envWorkspace.isEmpty {
             let nextBaseURL = envBaseURL.isEmpty ? baseURL : envBaseURL
             let nextToken = envToken.isEmpty ? token : envToken
             let nextWorkspace = envWorkspace.isEmpty ? workspace : envWorkspace
             saveConfig(baseURL: nextBaseURL, token: nextToken, workspace: nextWorkspace)
+        }
+        if !envPlatformBaseURL.isEmpty || !envPlatformAccessToken.isEmpty || !envPlatformRefreshToken.isEmpty || !envPlatformEmail.isEmpty {
+            let nextPlatformBaseURL = envPlatformBaseURL.isEmpty ? platformBaseURL : envPlatformBaseURL
+            let nextPlatformAccessToken = envPlatformAccessToken.isEmpty ? platformAccessToken : envPlatformAccessToken
+            let nextPlatformRefreshToken = envPlatformRefreshToken.isEmpty ? platformRefreshToken : envPlatformRefreshToken
+            let nextPlatformEmail = envPlatformEmail.isEmpty ? platformEmail : envPlatformEmail
+            savePlatformConfig(
+                baseURL: nextPlatformBaseURL,
+                accessToken: nextPlatformAccessToken,
+                refreshToken: nextPlatformRefreshToken,
+                email: nextPlatformEmail,
+                tenantID: platformTenantID,
+                userID: platformUserID,
+                accessTokenExpiresAt: platformAccessTokenExpiresAt
+            )
         }
 
         if let poll = Int(envPoll), poll > 0 {
@@ -201,6 +303,12 @@ final class RelayStore: ObservableObject {
         }
         if !envEffort.isEmpty {
             setChatReasoningEffort(envEffort)
+        }
+        if let envShowThinking {
+            setShowThinkingMessages(envShowThinking)
+        }
+        if let envPlanCollapsed {
+            setPlanProgressDefaultCollapsed(envPlanCollapsed)
         }
     }
 
@@ -224,9 +332,366 @@ final class RelayStore: ObservableObject {
         await refreshThread(threadID: threadID)
     }
 
+    @discardableResult
+    func applySetupURL(_ url: URL) async -> Bool {
+        guard url.scheme?.lowercased() == "codexrelay" else { return false }
+        guard let setup = RelaySetupLink.parse(url) else {
+            errorMessage = "Invalid setup QR link. Please regenerate the QR code and retry."
+            return true
+        }
+
+        switch setup {
+        case let .legacy(baseURL, token, workspace):
+            errorMessage = nil
+            saveConfig(baseURL: baseURL, token: token, workspace: workspace)
+        case let .v2(setupCode, expiresAt, platformBaseURLFromLink):
+            if let expiresAt, expiresAt < Date() {
+                errorMessage = "This setup QR has expired. Please generate a new QR code from desktop."
+                return true
+            }
+            if let platformBaseURLFromLink, !trimmed(platformBaseURLFromLink).isEmpty {
+                savePlatformConfig(baseURL: platformBaseURLFromLink, accessToken: platformAccessToken)
+            }
+            do {
+                let relayConfig = try await confirmDesktopPairing(
+                    setupCode: setupCode,
+                    platformBaseURLOverride: platformBaseURLFromLink
+                )
+                errorMessage = nil
+                saveConfig(
+                    baseURL: relayConfig.baseURL,
+                    token: relayConfig.token,
+                    workspace: relayConfig.workspace
+                )
+            } catch {
+                errorMessage = "Setup confirmation failed. \(userFacingErrorMessage(error))"
+            }
+        }
+        return true
+    }
+
     func saveConfig(baseURL: String, token: String, workspace: String) {
         applyConnection(baseURL: baseURL, token: token, workspace: workspace, writeWorkspace: nil)
         syncActiveProfileWithCurrentConnection()
+    }
+
+    func savePlatformConfig(
+        baseURL: String,
+        accessToken: String,
+        refreshToken: String? = nil,
+        email: String? = nil,
+        tenantID: String? = nil,
+        userID: String? = nil,
+        accessTokenExpiresAt: String? = nil
+    ) {
+        platformBaseURL = trimmed(baseURL)
+        platformAccessToken = trimmed(accessToken)
+        if let refreshToken {
+            platformRefreshToken = trimmed(refreshToken)
+        }
+        if let email {
+            platformEmail = trimmed(email)
+        }
+        if let tenantID {
+            platformTenantID = trimmed(tenantID)
+        }
+        if let userID {
+            platformUserID = trimmed(userID)
+        }
+        if let accessTokenExpiresAt {
+            platformAccessTokenExpiresAt = trimmed(accessTokenExpiresAt)
+        }
+        UserDefaults.standard.set(platformBaseURL, forKey: "platform.baseURL")
+        UserDefaults.standard.set(platformAccessToken, forKey: "platform.accessToken")
+        UserDefaults.standard.set(platformRefreshToken, forKey: "platform.refreshToken")
+        UserDefaults.standard.set(platformEmail, forKey: "platform.email")
+        UserDefaults.standard.set(platformTenantID, forKey: "platform.tenantID")
+        UserDefaults.standard.set(platformUserID, forKey: "platform.userID")
+        UserDefaults.standard.set(platformAccessTokenExpiresAt, forKey: "platform.accessTokenExpiresAt")
+    }
+
+    private struct PairingDesktopConfirmBody: Encodable {
+        let setup_code: String
+    }
+
+    private struct PairingDesktopConfirmResponse: Decodable {
+        struct RelayPayload: Decodable {
+            let base_url: String
+            let token: String
+            let workspace: String?
+        }
+
+        let ok: Bool
+        let relay: RelayPayload?
+        let relay_base_url: String?
+        let relay_token: String?
+        let workspace: String?
+    }
+
+    struct PlatformCodeDispatch {
+        let email: String
+        let expiresAt: String?
+        let devCode: String?
+    }
+
+    private struct PlatformSendCodeBody: Encodable {
+        let email: String
+    }
+
+    private struct PlatformSendCodeResponse: Decodable {
+        let ok: Bool
+        let email: String?
+        let expires_at: String?
+        let dev_code: String?
+    }
+
+    private struct PlatformVerifyBody: Encodable {
+        let email: String
+        let code: String
+    }
+
+    private struct PlatformRefreshBody: Encodable {
+        let refresh_token: String
+    }
+
+    private struct PlatformAuthTokenResponse: Decodable {
+        let ok: Bool
+        let tenant_id: String?
+        let user_id: String?
+        let access_token: String?
+        let refresh_token: String?
+        let expires_at: String?
+    }
+
+    private struct PlatformBootstrapResponse: Decodable {
+        let ok: Bool
+        let relay_base_url: String?
+        let relay_token: String?
+        let workspace: String?
+        let write_workspace: String?
+    }
+
+    func sendPlatformEmailCode(email: String) async throws -> PlatformCodeDispatch {
+        let normalizedEmail = trimmed(email).lowercased()
+        if normalizedEmail.isEmpty {
+            throw RelayError.serverError("Email is required.")
+        }
+        let apiBaseURL = resolvePairingPlatformBaseURL(override: nil)
+        if apiBaseURL.isEmpty {
+            throw RelayError.serverError("Platform API URL is required.")
+        }
+
+        isPlatformAuthLoading = true
+        defer { isPlatformAuthLoading = false }
+
+        let response: PlatformSendCodeResponse = try await client.post(
+            "v1/auth/email/send-code",
+            baseURL: apiBaseURL,
+            token: "",
+            body: PlatformSendCodeBody(email: normalizedEmail)
+        )
+
+        savePlatformConfig(
+            baseURL: apiBaseURL,
+            accessToken: platformAccessToken,
+            refreshToken: platformRefreshToken,
+            email: normalizedEmail,
+            tenantID: platformTenantID,
+            userID: platformUserID,
+            accessTokenExpiresAt: platformAccessTokenExpiresAt
+        )
+        lastPlatformDevCode = trimmed(response.dev_code)
+        return PlatformCodeDispatch(
+            email: normalizedEmail,
+            expiresAt: response.expires_at,
+            devCode: trimmed(response.dev_code).isEmpty ? nil : trimmed(response.dev_code)
+        )
+    }
+
+    func verifyPlatformEmailCode(email: String, code: String, autoBootstrap: Bool = true) async throws {
+        let normalizedEmail = trimmed(email).lowercased()
+        let normalizedCode = trimmed(code)
+        if normalizedEmail.isEmpty || normalizedCode.isEmpty {
+            throw RelayError.serverError("Email and verification code are required.")
+        }
+        let apiBaseURL = resolvePairingPlatformBaseURL(override: nil)
+        if apiBaseURL.isEmpty {
+            throw RelayError.serverError("Platform API URL is required.")
+        }
+
+        isPlatformAuthLoading = true
+        defer { isPlatformAuthLoading = false }
+
+        let response: PlatformAuthTokenResponse = try await client.post(
+            "v1/auth/email/verify",
+            baseURL: apiBaseURL,
+            token: "",
+            body: PlatformVerifyBody(email: normalizedEmail, code: normalizedCode)
+        )
+        guard applyPlatformAuthTokenResponse(response, fallbackEmail: normalizedEmail, baseURL: apiBaseURL) else {
+            throw RelayError.serverError("Invalid auth verification response.")
+        }
+        lastPlatformDevCode = nil
+        if autoBootstrap {
+            try await fetchPlatformBootstrapAndApply()
+        }
+    }
+
+    func refreshPlatformAccessToken(force: Bool = false) async throws {
+        if !force, isPlatformAccessTokenValidSoon() {
+            return
+        }
+        let apiBaseURL = resolvePairingPlatformBaseURL(override: nil)
+        if apiBaseURL.isEmpty {
+            throw RelayError.serverError("Platform API URL is required.")
+        }
+        let refreshToken = trimmed(platformRefreshToken)
+        if refreshToken.isEmpty {
+            throw RelayError.serverError("Platform refresh token is missing. Please login again.")
+        }
+
+        let response: PlatformAuthTokenResponse = try await client.post(
+            "v1/auth/refresh",
+            baseURL: apiBaseURL,
+            token: "",
+            body: PlatformRefreshBody(refresh_token: refreshToken)
+        )
+        guard applyPlatformAuthTokenResponse(response, fallbackEmail: platformEmail, baseURL: apiBaseURL) else {
+            throw RelayError.serverError("Invalid auth refresh response.")
+        }
+    }
+
+    func fetchPlatformBootstrapAndApply() async throws {
+        let apiBaseURL = resolvePairingPlatformBaseURL(override: nil)
+        if apiBaseURL.isEmpty {
+            throw RelayError.serverError("Platform API URL is required.")
+        }
+        let accessToken = try await ensurePlatformAccessToken()
+        let response: PlatformBootstrapResponse = try await client.get(
+            "v1/bootstrap/mobile",
+            baseURL: apiBaseURL,
+            token: accessToken
+        )
+        let relayBaseURL = trimmed(response.relay_base_url)
+        let relayToken = trimmed(response.relay_token)
+        if relayBaseURL.isEmpty || relayToken.isEmpty {
+            throw RelayError.serverError("Platform bootstrap response is missing relay credentials.")
+        }
+
+        let workspaceScope = normalizeWorkspaceFilter(response.workspace ?? "*")
+        let nextWriteWorkspace = trimmed(response.write_workspace)
+        applyConnection(
+            baseURL: relayBaseURL,
+            token: relayToken,
+            workspace: workspaceScope,
+            writeWorkspace: nextWriteWorkspace.isEmpty ? nil : nextWriteWorkspace
+        )
+        syncActiveProfileWithCurrentConnection()
+        errorMessage = nil
+    }
+
+    func clearPlatformSession(keepBaseURL: Bool = true) {
+        let persistedBaseURL = keepBaseURL ? platformBaseURL : ""
+        savePlatformConfig(
+            baseURL: persistedBaseURL,
+            accessToken: "",
+            refreshToken: "",
+            email: "",
+            tenantID: "",
+            userID: "",
+            accessTokenExpiresAt: ""
+        )
+        lastPlatformDevCode = nil
+    }
+
+    private func applyPlatformAuthTokenResponse(
+        _ response: PlatformAuthTokenResponse,
+        fallbackEmail: String,
+        baseURL: String
+    ) -> Bool {
+        let nextAccessToken = trimmed(response.access_token)
+        let nextRefreshToken = trimmed(response.refresh_token)
+        let nextTenantID = trimmed(response.tenant_id)
+        let nextUserID = trimmed(response.user_id)
+        let nextExpiresAt = trimmed(response.expires_at)
+        if nextAccessToken.isEmpty || nextRefreshToken.isEmpty {
+            return false
+        }
+        savePlatformConfig(
+            baseURL: baseURL,
+            accessToken: nextAccessToken,
+            refreshToken: nextRefreshToken,
+            email: trimmed(fallbackEmail).lowercased(),
+            tenantID: nextTenantID,
+            userID: nextUserID,
+            accessTokenExpiresAt: nextExpiresAt
+        )
+        return true
+    }
+
+    private func isPlatformAccessTokenValidSoon() -> Bool {
+        let token = trimmed(platformAccessToken)
+        guard !token.isEmpty else { return false }
+        guard let expiresAt = parseISODate(platformAccessTokenExpiresAt) else { return true }
+        return expiresAt.timeIntervalSinceNow > 90
+    }
+
+    private func ensurePlatformAccessToken() async throws -> String {
+        if isPlatformAccessTokenValidSoon() {
+            return trimmed(platformAccessToken)
+        }
+        try await refreshPlatformAccessToken(force: true)
+        let nextToken = trimmed(platformAccessToken)
+        if nextToken.isEmpty {
+            throw RelayError.serverError("Platform access token is missing. Please login again.")
+        }
+        return nextToken
+    }
+
+    private func resolvePairingPlatformBaseURL(override: String?) -> String {
+        let direct = trimmed(override)
+        if !direct.isEmpty { return direct }
+        let configured = trimmed(platformBaseURL)
+        if !configured.isEmpty { return configured }
+        return trimmed(baseURL)
+    }
+
+    private func confirmDesktopPairing(
+        setupCode: String,
+        platformBaseURLOverride: String?
+    ) async throws -> (baseURL: String, token: String, workspace: String) {
+        let apiBaseURL = resolvePairingPlatformBaseURL(override: platformBaseURLOverride)
+        if apiBaseURL.isEmpty {
+            throw RelayError.serverError("Platform API URL is required before confirming a v2 setup code.")
+        }
+
+        let authToken = try await ensurePlatformAccessToken()
+        if authToken.isEmpty {
+            throw RelayError.serverError("Platform access token is required before confirming a v2 setup code.")
+        }
+
+        let response: PairingDesktopConfirmResponse = try await client.post(
+            "v1/pairing/desktop/confirm",
+            baseURL: apiBaseURL,
+            token: authToken,
+            body: PairingDesktopConfirmBody(setup_code: setupCode)
+        )
+
+        if let relay = response.relay {
+            return (
+                baseURL: trimmed(relay.base_url),
+                token: trimmed(relay.token),
+                workspace: normalizeWorkspaceFilter(relay.workspace ?? "*")
+            )
+        }
+        if let relayBaseURL = response.relay_base_url, let relayToken = response.relay_token {
+            return (
+                baseURL: trimmed(relayBaseURL),
+                token: trimmed(relayToken),
+                workspace: normalizeWorkspaceFilter(response.workspace ?? "*")
+            )
+        }
+        throw RelayError.serverError("Invalid pairing confirmation payload.")
     }
 
     func createAccountProfile(name: String) {
@@ -355,7 +820,11 @@ final class RelayStore: ObservableObject {
     func setWriteWorkspace(_ value: String) {
         let trimmedValue = trimmed(value)
         writeWorkspace = trimmedValue.isEmpty ? Self.defaultWriteWorkspace : trimmedValue
-        UserDefaults.standard.set(writeWorkspace, forKey: "relay.writeWorkspace")
+        if writeWorkspace.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "relay.writeWorkspace")
+        } else {
+            UserDefaults.standard.set(writeWorkspace, forKey: "relay.writeWorkspace")
+        }
         syncActiveProfileWithCurrentConnection()
     }
 
@@ -379,6 +848,12 @@ final class RelayStore: ObservableObject {
         showThinkingMessages = enabled
         threadTranscriptCache.removeAll()
         UserDefaults.standard.set(enabled, forKey: "chat.showThinkingMessages")
+    }
+
+    func setPlanProgressDefaultCollapsed(_ enabled: Bool) {
+        guard planProgressDefaultCollapsed != enabled else { return }
+        planProgressDefaultCollapsed = enabled
+        UserDefaults.standard.set(enabled, forKey: "chat.planProgressDefaultCollapsed")
     }
 
     func chatMode(for threadID: String?) -> String {
@@ -925,8 +1400,15 @@ final class RelayStore: ObservableObject {
         requestID: String,
         answers: [String: ChatUserInputAnswerPayload]
     ) async -> Bool {
-        guard isConfigured else { return false }
         guard !answers.isEmpty else { return false }
+        if isUITestSeedModeEnabled {
+            return submitUserInputRequestInSeedMode(
+                threadID: threadID,
+                requestID: requestID,
+                answers: answers
+            )
+        }
+        guard isConfigured else { return false }
 
         struct Body: Encodable {
             let request_id: String
@@ -954,6 +1436,45 @@ final class RelayStore: ObservableObject {
         }
     }
 
+    private func submitUserInputRequestInSeedMode(
+        threadID: String,
+        requestID: String,
+        answers: [String: ChatUserInputAnswerPayload]
+    ) -> Bool {
+        guard var request = threadUserInputRequests[threadID] else { return false }
+        guard request.request_id == requestID else { return false }
+        let ts = nowIso()
+
+        request.answers = answers
+        request.status = "completed"
+        request.answered_at = ts
+        request.completed_at = ts
+        request.updated_at = ts
+        threadUserInputRequests.removeValue(forKey: threadID)
+
+        var events = threadEvents[threadID] ?? []
+        let nextSeq = (events.last?.seq ?? 0) + 1
+        events.append(ChatEvent(
+            seq: nextSeq,
+            thread_id: threadID,
+            workspace: request.workspace,
+            job_id: request.job_id,
+            turn_id: request.turn_id,
+            type: "user.input.responded",
+            delta: "Submitted user input from iPhone.",
+            payload: .object([
+                "request_id": .string(requestID),
+            ]),
+            ts: ts
+        ))
+        threadEvents[threadID] = events
+        threadLastSeq[threadID] = max(threadLastSeq[threadID] ?? 0, nextSeq)
+        threadTranscriptCache.removeValue(forKey: threadID)
+        applyThreadStatusLocally(threadID: threadID, status: "running", updatedAt: ts)
+        errorMessage = nil
+        return true
+    }
+
     func threadProgressSummary(threadID: String) -> String? {
         let events = threadEvents[threadID] ?? []
         let thread = threads.first(where: { $0.thread_id == threadID })
@@ -974,6 +1495,17 @@ final class RelayStore: ObservableObject {
         }
 
         for event in events.reversed() {
+            if event.type == "user.input.responded" {
+                return "Submitted answers, waiting for desktop to continue."
+            }
+            if event.type == "job.waiting_on_user_input" {
+                return waitingOnUserInputSummary(threadID: threadID)
+            }
+            if event.type == "rpc.item.started",
+               let item = jsonValue(event.payload, path: ["params", "item"]),
+               isRequestUserInputItem(item) {
+                return requestUserInputLifecycleText(item: item, started: true)
+            }
             if let inferred = inferredThreadStatus(for: event), !inferred.isEmpty {
                 if preferRunningLabel && inferred == "queued" {
                     continue
@@ -989,6 +1521,14 @@ final class RelayStore: ObservableObject {
             return displayStatusLabel(thread.status)
         }
         return nil
+    }
+
+    private func waitingOnUserInputSummary(threadID: String) -> String {
+        let count = threadUserInputRequests[threadID]?.questions.count ?? 0
+        if count > 0 {
+            return "Asking \(count) question\(count == 1 ? "" : "s") on iPhone."
+        }
+        return "Waiting for your answers on iPhone."
     }
 
     func transcript(for threadID: String) -> [ChatTranscriptMessage] {
@@ -1048,10 +1588,12 @@ final class RelayStore: ObservableObject {
             if includeInternalProgress,
                let progress = assistantProgressText(for: event),
                !progress.isEmpty {
-                if let last = messages.last,
-                   last.role == "assistant",
-                   last.attachments.isEmpty,
-                   last.text.trimmingCharacters(in: .whitespacesAndNewlines) == progress.trimmingCharacters(in: .whitespacesAndNewlines) {
+                if shouldSkipSequentialProgressDuplicate(
+                    in: messages,
+                    role: "assistant",
+                    text: progress,
+                    attachments: []
+                ) {
                     continue
                 }
                 appendTranscriptMessage(
@@ -1140,6 +1682,14 @@ final class RelayStore: ObservableObject {
         }
 
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
+        if shouldSkipSequentialProgressDuplicate(
+            in: messages,
+            role: role,
+            text: trimmed,
+            attachments: attachments
+        ) {
+            return
+        }
         messages.append(ChatTranscriptMessage(
             id: "\(threadID)-\(role)-\(messages.count + 1)",
             role: role,
@@ -1147,6 +1697,20 @@ final class RelayStore: ObservableObject {
             ts: ts,
             attachments: attachments
         ))
+    }
+
+    private func shouldSkipSequentialProgressDuplicate(
+        in messages: [ChatTranscriptMessage],
+        role: String,
+        text: String,
+        attachments: [ChatTranscriptAttachment]
+    ) -> Bool {
+        guard attachments.isEmpty else { return false }
+        guard role == "assistant" || role == "thinking" || role == "system" else { return false }
+        guard let last = messages.last else { return false }
+        guard last.role == role, last.attachments.isEmpty else { return false }
+        return last.text.trimmingCharacters(in: .whitespacesAndNewlines) ==
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func transcriptAttachments(for event: ChatEvent) -> [ChatTranscriptAttachment] {
@@ -1404,7 +1968,10 @@ final class RelayStore: ObservableObject {
     private func itemLifecycleText(for event: ChatEvent, started: Bool) -> String? {
         guard let item = jsonValue(event.payload, path: ["params", "item"]) else { return nil }
         let itemType = (jsonString(item, path: ["type"]) ?? "").lowercased()
-        if itemType.isEmpty { return nil }
+        if itemType.isEmpty && !isRequestUserInputItem(item) { return nil }
+        if isRequestUserInputItem(item) {
+            return requestUserInputLifecycleText(item: item, started: started)
+        }
 
         switch itemType {
         case "commandexecution":
@@ -1450,6 +2017,61 @@ final class RelayStore: ObservableObject {
         default:
             return nil
         }
+    }
+
+    private func requestUserInputLifecycleText(item: JSONValue, started: Bool) -> String {
+        let count = requestUserInputQuestionCount(item: item)
+        if started {
+            if count > 0 {
+                return "Requesting input (\(count) question\(count == 1 ? "" : "s"))..."
+            }
+            return "Requesting user input..."
+        }
+        if count > 0 {
+            return "Asked \(count) question\(count == 1 ? "" : "s") on iPhone."
+        }
+        return "Asked for user input on iPhone."
+    }
+
+    private func requestUserInputQuestionCount(item: JSONValue) -> Int {
+        let candidates: [[String]] = [
+            ["questions"],
+            ["arguments", "questions"],
+            ["args", "questions"],
+            ["params", "questions"],
+            ["input", "questions"],
+            ["tool_input", "questions"],
+        ]
+        for path in candidates {
+            if let questions = jsonArray(item, path: path), !questions.isEmpty {
+                return questions.count
+            }
+        }
+        return 0
+    }
+
+    private func isRequestUserInputItem(_ item: JSONValue) -> Bool {
+        let rawValues: [String?] = [
+            jsonString(item, path: ["type"]),
+            jsonString(item, path: ["name"]),
+            jsonString(item, path: ["tool"]),
+            jsonString(item, path: ["tool_name"]),
+            jsonString(item, path: ["toolName"]),
+            jsonString(item, path: ["method"]),
+        ]
+        let normalizedValues = rawValues
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .map {
+                $0.replacingOccurrences(of: "_", with: "")
+                    .replacingOccurrences(of: "-", with: "")
+                    .replacingOccurrences(of: ".", with: "")
+                    .replacingOccurrences(of: "/", with: "")
+            }
+        return normalizedValues.contains(where: {
+            $0.contains("requestuserinput")
+                || $0.contains("itemtoolrequestuserinput")
+                || $0.contains("toolrequestuserinput")
+        })
     }
 
     private func reasoningItemSummaryText(for event: ChatEvent) -> String? {
@@ -1844,7 +2466,7 @@ final class RelayStore: ObservableObject {
             return explicit
         }
         let fallback = trimmed(writeWorkspace)
-        return fallback.isEmpty ? Self.defaultWriteWorkspace : fallback
+        return fallback.isEmpty ? Self.operationalWorkspaceFallback : fallback
     }
 
     private func refreshRelayRuntimeStatus(workspaceScope: String) async {
@@ -1940,10 +2562,11 @@ final class RelayStore: ObservableObject {
         authReloginRequest = nil
     }
 
-    func requestSessionSyncIfNeeded(threadID: String) async {
-        guard isConfigured else { return }
-        guard let thread = threads.first(where: { $0.thread_id == threadID }) else { return }
-        _ = await requestSessionSync(thread: thread, requestedBy: "ios-open-thread")
+    @discardableResult
+    func requestSessionSyncIfNeeded(threadID: String) async -> Bool {
+        guard isConfigured else { return false }
+        guard let thread = threads.first(where: { $0.thread_id == threadID }) else { return false }
+        return await requestSessionSync(thread: thread, requestedBy: "ios-open-thread")
     }
 
     func requestSessionSyncForAllThreads() async -> Int {
@@ -1963,6 +2586,11 @@ final class RelayStore: ObservableObject {
                 count += 1
             }
         }
+    }
+
+    func isSessionBackedThread(threadID: String) -> Bool {
+        guard let thread = threads.first(where: { $0.thread_id == threadID }) else { return false }
+        return isSessionThread(thread)
     }
 
     private func requestSessionSync(thread: ChatThread, requestedBy: String) async -> Bool {
@@ -2270,7 +2898,8 @@ final class RelayStore: ObservableObject {
         if workspace != "*" {
             return workspace
         }
-        return writeWorkspace
+        let fallback = trimmed(writeWorkspace)
+        return fallback.isEmpty ? Self.operationalWorkspaceFallback : fallback
     }
 
     private struct TranscriptCacheEntry {
@@ -2462,18 +3091,34 @@ final class RelayStore: ObservableObject {
     }
 
     private var isUITestSeedModeEnabled: Bool {
-        let raw = trimmed(ProcessInfo.processInfo.environment["CODEX_UI_TEST_SEED_THREADS"]).lowercased()
-        return raw == "1" || raw == "true" || raw == "yes"
+        boolFromEnv(ProcessInfo.processInfo.environment["CODEX_UI_TEST_SEED_THREADS"]) == true
+    }
+
+    private var isUITestPlanSeedModeEnabled: Bool {
+        boolFromEnv(ProcessInfo.processInfo.environment["CODEX_UI_TEST_SEED_PLAN_MODE"]) == true
     }
 
     private func seedUITestThreadsIfNeeded() {
+        let env = ProcessInfo.processInfo.environment
         let targetWorkspace: String
         if workspace == "*" {
             let fallback = trimmed(writeWorkspace)
-            targetWorkspace = fallback.isEmpty ? Self.defaultWriteWorkspace : fallback
+            targetWorkspace = fallback.isEmpty ? Self.operationalWorkspaceFallback : fallback
         } else {
             targetWorkspace = workspace
         }
+        if let overrideShowThinking = boolFromEnv(env["CODEX_UI_TEST_SHOW_THINKING_MESSAGES"]) {
+            setShowThinkingMessages(overrideShowThinking)
+        }
+        if let overridePlanCollapsed = boolFromEnv(env["CODEX_UI_TEST_PLAN_COLLAPSED"]) {
+            setPlanProgressDefaultCollapsed(overridePlanCollapsed)
+        }
+
+        if isUITestPlanSeedModeEnabled {
+            seedUITestPlanThread(workspace: targetWorkspace)
+            return
+        }
+
         let ts = nowIso()
         threads = [
             ChatThread(
@@ -2493,13 +3138,253 @@ final class RelayStore: ObservableObject {
         isLoading = false
     }
 
+    private func seedUITestPlanThread(workspace: String) {
+        let threadID = "ui-test-plan-thread"
+        let jobID = "ui-test-plan-job"
+        let turnID = "ui-test-plan-turn"
+        let requestID = "ui-test-plan-request"
+        let itemID = "ui-test-plan-item"
+        let ts = nowIso()
+
+        let questionOneOptions = JSONValue.array([
+            .object([
+                "label": .string("Phased rollout (Recommended)"),
+                "description": .string("Launch on mobile first, then ship desktop parity."),
+            ]),
+            .object([
+                "label": .string("All platforms day 1"),
+                "description": .string("Ship full parity across every platform at launch."),
+            ]),
+        ])
+        let questionTwoOptions = JSONValue.array([
+            .object([
+                "label": .string("Account password (Recommended)"),
+                "description": .string("Fastest to ship and lowest implementation risk."),
+            ]),
+            .object([
+                "label": .string("Email OTP"),
+                "description": .string("Adds verification flow and higher implementation effort."),
+            ]),
+        ])
+        let itemPayload = JSONValue.object([
+            "params": .object([
+                "item": .object([
+                    "id": .string(itemID),
+                    "type": .string("item/tool/request_user_input"),
+                    "name": .string("request_user_input"),
+                    "status": .string("completed"),
+                    "arguments": .object([
+                        "questions": .array([
+                            .object([
+                                "id": .string("launch_strategy"),
+                                "header": .string("Release Strategy"),
+                                "question": .string("Should launch be phased or all-platform day 1?"),
+                                "options": questionOneOptions,
+                            ]),
+                            .object([
+                                "id": .string("auth_method"),
+                                "header": .string("Authentication"),
+                                "question": .string("Choose the initial authentication method."),
+                                "options": questionTwoOptions,
+                            ]),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ])
+
+        threads = [
+            ChatThread(
+                thread_id: threadID,
+                workspace: workspace,
+                title: "UI Plan Mode Thread",
+                external_thread_id: nil,
+                source: "ios",
+                status: "waiting_on_user_input",
+                created_at: ts,
+                updated_at: ts
+            )
+        ]
+        remoteWorkspaces = [workspace]
+        selectedThreadID = threadID
+        threadJobs[threadID] = []
+        threadPreferences[threadID] = ChatThreadPreferences(
+            mode: "plan",
+            model: "gpt-5-codex",
+            effort: normalizeEffort(chatReasoningEffort)
+        )
+
+        threadEvents[threadID] = [
+            ChatEvent(
+                seq: 1,
+                thread_id: threadID,
+                workspace: workspace,
+                job_id: jobID,
+                turn_id: turnID,
+                type: "user.message",
+                delta: "Please align mobile Plan mode with desktop behavior.",
+                payload: nil,
+                ts: ts
+            ),
+            ChatEvent(
+                seq: 2,
+                thread_id: threadID,
+                workspace: workspace,
+                job_id: jobID,
+                turn_id: turnID,
+                type: "assistant.message",
+                delta: """
+<proposed_plan>
+# Plan Mode Alignment
+1. Keep desktop-equivalent behavior in plan sessions.
+2. Preserve mobile-first layout and touch interactions.
+3. Validate ignore/restore/submit flow in UI tests.
+</proposed_plan>
+Proceeding to confirm product decisions before implementation.
+""",
+                payload: nil,
+                ts: ts
+            ),
+            ChatEvent(
+                seq: 3,
+                thread_id: threadID,
+                workspace: workspace,
+                job_id: jobID,
+                turn_id: turnID,
+                type: "rpc.agent_reasoning",
+                delta: nil,
+                payload: .object([
+                    "params": .object([
+                        "text": .string("Thinking through rollout and auth tradeoffs..."),
+                    ]),
+                ]),
+                ts: ts
+            ),
+            ChatEvent(
+                seq: 4,
+                thread_id: threadID,
+                workspace: workspace,
+                job_id: jobID,
+                turn_id: turnID,
+                type: "rpc.item.started",
+                delta: nil,
+                payload: itemPayload,
+                ts: ts
+            ),
+            ChatEvent(
+                seq: 5,
+                thread_id: threadID,
+                workspace: workspace,
+                job_id: jobID,
+                turn_id: turnID,
+                type: "rpc.item.completed",
+                delta: nil,
+                payload: itemPayload,
+                ts: ts
+            ),
+            ChatEvent(
+                seq: 6,
+                thread_id: threadID,
+                workspace: workspace,
+                job_id: jobID,
+                turn_id: turnID,
+                type: "job.waiting_on_user_input",
+                delta: "Waiting for user input on iPhone.",
+                payload: nil,
+                ts: ts
+            ),
+        ]
+        threadLastSeq[threadID] = 6
+        threadTranscriptCache.removeValue(forKey: threadID)
+        threadUserInputRequests[threadID] = ChatUserInputRequest(
+            request_id: requestID,
+            job_id: jobID,
+            thread_id: threadID,
+            workspace: workspace,
+            connector_id: nil,
+            turn_id: turnID,
+            item_id: itemID,
+            questions: [
+                ChatUserInputQuestion(
+                    id: "launch_strategy",
+                    header: "Release Strategy",
+                    question: "Should launch be phased or all-platform day 1?",
+                    isOther: false,
+                    isSecret: false,
+                    options: [
+                        ChatUserInputOption(
+                            label: "Phased rollout (Recommended)",
+                            description: "Launch on mobile first, then ship desktop parity."
+                        ),
+                        ChatUserInputOption(
+                            label: "All platforms day 1",
+                            description: "Ship full parity across every platform at launch."
+                        ),
+                    ]
+                ),
+                ChatUserInputQuestion(
+                    id: "auth_method",
+                    header: "Authentication",
+                    question: "Choose the initial authentication method.",
+                    isOther: false,
+                    isSecret: false,
+                    options: [
+                        ChatUserInputOption(
+                            label: "Account password (Recommended)",
+                            description: "Fastest to ship and lowest implementation risk."
+                        ),
+                        ChatUserInputOption(
+                            label: "Email OTP",
+                            description: "Adds verification flow and higher implementation effort."
+                        ),
+                    ]
+                ),
+            ],
+            answers: [
+                "launch_strategy": ChatUserInputAnswerPayload(
+                    answers: ["Phased rollout (Recommended)"]
+                ),
+                "auth_method": ChatUserInputAnswerPayload(
+                    answers: ["Account password (Recommended)"]
+                ),
+            ],
+            status: "pending",
+            created_at: ts,
+            answered_at: nil,
+            completed_at: nil,
+            updated_at: ts
+        )
+        errorMessage = nil
+        isLoading = false
+    }
+
     private func userFacingErrorMessage(_ error: Error) -> String {
         let raw = String(describing: error)
         let normalized = raw.lowercased()
         if normalized.contains("relayerror.invalidurl")
             || normalized.contains("invalid url")
             || normalized.contains("unsupported url") {
-            return "Invalid Relay URL. Please enter a full URL such as https://relay.example.com."
+            return "Invalid Relay URL. Please enter a full URL such as https://your-relay-domain."
+        }
+        if normalized.contains("otp_invalid") {
+            return "Verification code is invalid. Please try again."
+        }
+        if normalized.contains("otp_expired") || normalized.contains("otp_used") {
+            return "Verification code expired. Please request a new code."
+        }
+        if normalized.contains("refresh_expired")
+            || normalized.contains("refresh_revoked")
+            || normalized.contains("refresh_not_found") {
+            return "Login session expired. Please sign in again."
+        }
+        if normalized.contains("setup_code_expired") {
+            return "This setup QR expired. Generate a new QR on desktop and retry."
+        }
+        if normalized.contains("setup_code_used") {
+            return "This setup QR has already been used."
+        }
+        if normalized.contains("setup_code_not_found") || normalized.contains("setup_code_not_bound") {
+            return "Setup code is invalid. Regenerate QR on desktop and retry."
         }
         if normalized.contains("http 401")
             || normalized.contains("http 403")
@@ -2530,6 +3415,17 @@ final class RelayStore: ObservableObject {
         let raw = trimmed(value)
         guard !raw.isEmpty else { return nil }
         return Self.iso8601Fractional.date(from: raw) ?? Self.iso8601.date(from: raw)
+    }
+
+    private func boolFromEnv(_ raw: String?) -> Bool? {
+        let normalized = trimmed(raw).lowercased()
+        if ["1", "true", "yes", "on"].contains(normalized) {
+            return true
+        }
+        if ["0", "false", "no", "off"].contains(normalized) {
+            return false
+        }
+        return nil
     }
 
     private func trimmed(_ value: String?) -> String {

@@ -2,6 +2,15 @@
 
 本指南面向第一次部署的用户，目标是让 iPhone 能稳定连上你自己的 Relay 系统。
 
+## 前提条件（必须满足）
+
+这不是托管 SaaS，想用本 App，必须具备以下两项：
+
+1. 你需要自行搭建一台可公网访问的 Relay 服务器（建议 HTTPS 域名）。
+2. 你需要有一台可登录 Codex 的桌面/Mac 设备，并且保持 connector/runner 实时运行（常驻在线）。
+
+如果缺少任一项，iOS App 无法完成完整链路（状态、线程、消息和任务执行）。
+
 ## 你要准备什么
 
 | 角色 | 必需 | 说明 |
@@ -72,6 +81,15 @@ App 首次启动进入 `Relay Setup`，填写：
 - `Workspace`: 推荐 `*`（或固定 `default`）
 
 点击 `Save and Start`。
+
+可选：在 Mac/云端生成配置二维码，手机相机扫码后自动回填：
+
+```bash
+npm run relay:setup:qr
+```
+
+默认输出：`state/relay_setup/relay_setup_qr.png`。  
+注意：二维码包含明文 token，请按密钥处理（不要外传、截图后及时删除）。
 
 成功标准：
 - `Status` 页里 `connector_online = ONLINE`
@@ -183,9 +201,9 @@ npm run deploy:smoke:teardown:server
 详见：`docs/testing/nonprod-isolated-testing.md`
 
 ## 相关文档
-- GitHub 仓库：`https://github.com/CarlHavingFun/codex-relay-mobile-release`
-- GitHub Release：`https://github.com/CarlHavingFun/codex-relay-mobile-release/releases/latest`
-- 网页版详细指南：`https://my-agent.com.cn/codex-relay-mobile/`
+- GitHub 仓库：`https://github.com/your-org/codex-relay-mobile-release`
+- GitHub Release：`https://github.com/your-org/codex-relay-mobile-release/releases/latest`
+- 网页版详细指南：`https://docs.example.com/codex-relay-mobile/`
 - 服务器详版：`docs/deploy/server-ubuntu22.md`
 - mac mini 详版：`docs/deploy/macmini.md`
 - 上架清单：`docs/appstore/release-checklist.md`

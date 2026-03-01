@@ -13,6 +13,11 @@ struct CodexIPhoneApp: App {
                     await store.bootstrap()
                     await store.runLaunchE2EIfNeeded()
                 }
+                .onOpenURL { url in
+                    Task {
+                        _ = await store.applySetupURL(url)
+                    }
+                }
         }
     }
 }

@@ -1,0 +1,19 @@
+"plan.progress.asking_questions" = "正在向你提问（%d 个问题）";
+"plan.progress.waiting_answers" = "等待你在手机上回答";
+"plan.progress.collapse_details" = "折叠详情";
+"plan.progress.expand_details" = "展开详情";
+
+"plan.user_input.title" = "需要选择计划";
+"plan.user_input.ignore" = "忽略";
+"plan.user_input.submitting" = "提交中...";
+"plan.user_input.submit" = "提交";
+"plan.user_input.pending_compact" = "有待回答问题（%d）";
+"plan.user_input.restore" = "恢复";
+"plan.user_input.recommended" = "推荐";
+"plan.user_input.other_placeholder" = "其他...";
+"plan.user_input.answer_placeholder" = "请输入你的答案...";
+
+"plan.proposed_plan.title" = "实施计划";
+
+"settings.plan.default_collapsed" = "Plan 默认折叠内部进度";
+"settings.plan.default_collapsed.description" = "Plan 会话默认只显示关键状态；可在会话内展开查看完整内部进度。";

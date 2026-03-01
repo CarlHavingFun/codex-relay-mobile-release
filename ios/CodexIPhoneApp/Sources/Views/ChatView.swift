@@ -22,13 +22,36 @@ struct ChatView: View {
     @State private var expandedLogMessageIDs: Set<String> = []
     @State private var userInputSelections: [String: String] = [:]
     @State private var userInputTextValues: [String: String] = [:]
+    @State private var isInitialThreadLoadPending = false
     @State private var isSubmittingUserInput = false
     @State private var activeUserInputRequestID: String?
     @State private var isLoadingMoreHistory = false
+    @State private var isPlanProgressExpanded = false
+    @State private var ignoredUserInputRequestIDs: Set<String> = []
     @FocusState private var inputFocused: Bool
 
     private var transcript: [ChatTranscriptMessage] {
         store.transcript(for: threadID)
+    }
+
+    private var isPlanMode: Bool {
+        store.chatMode(for: threadID) == "plan"
+    }
+
+    private var visibleTranscript: [ChatTranscriptMessage] {
+        guard isPlanMode, store.showThinkingMessages, !isPlanProgressExpanded else {
+            return transcript
+        }
+        return transcript.filter { message in
+            switch message.role {
+            case "thinking":
+                return false
+            case "system":
+                return isCriticalPlanSystemMessage(message.text)
+            default:
+                return true
+            }
+        }
     }
 
     private var threadTitle: String {
@@ -48,6 +71,22 @@ struct ChatView: View {
 
     private var pendingUserInputRequest: ChatUserInputRequest? {
         store.pendingUserInputRequest(for: threadID)
+    }
+
+    private var visiblePendingUserInputRequest: ChatUserInputRequest? {
+        guard let request = pendingUserInputRequest else { return nil }
+        if ignoredUserInputRequestIDs.contains(request.request_id) {
+            return nil
+        }
+        return request
+    }
+
+    private var ignoredPendingUserInputRequest: ChatUserInputRequest? {
+        guard let request = pendingUserInputRequest else { return nil }
+        if ignoredUserInputRequestIDs.contains(request.request_id) {
+            return request
+        }
+        return nil
     }
 
     private var runtimeBanner: (text: String, icon: String, color: Color)? {
@@ -126,6 +165,24 @@ struct ChatView: View {
         store.threadProgressSummary(threadID: threadID)
     }
 
+    private var planProgressSummaryText: String? {
+        guard isPlanMode else { return nil }
+        if let request = pendingUserInputRequest {
+            let count = request.questions.count
+            return count > 0
+                ? String(
+                    format: t("plan.progress.asking_questions", "Asking %d questions on iPhone."),
+                    count
+                )
+                : t("plan.progress.waiting_answers", "Waiting for your answers on iPhone.")
+        }
+        if let liveProgressText,
+           !liveProgressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return liveProgressText
+        }
+        return nil
+    }
+
     private var scrollSpaceName: String {
         "chat-scroll-\(threadID)"
     }
@@ -141,6 +198,9 @@ struct ChatView: View {
                progress != runtimeBanner?.text {
                 runtimeBannerView(text: progress, icon: "waveform.path.ecg", color: .secondary)
             }
+            if let summary = planProgressSummaryText {
+                planProgressSummaryBar(summary)
+            }
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -148,7 +208,7 @@ struct ChatView: View {
                         if !transcript.isEmpty {
                             historyWindowControl(proxy: proxy)
                         }
-                        ForEach(transcript) { msg in
+                        ForEach(visibleTranscript) { msg in
                             messageRow(msg)
                             .id(msg.id)
                         }
@@ -186,7 +246,7 @@ struct ChatView: View {
                     updatePinnedToBottomState()
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if !isPinnedToBottom && !transcript.isEmpty {
+                    if !isPinnedToBottom && !visibleTranscript.isEmpty {
                         Button {
                             isPinnedToBottom = true
                             scrollToBottom(proxy, animated: true)
@@ -208,19 +268,19 @@ struct ChatView: View {
                     inputFocused = false
                 }
                 .overlay {
-                    if transcript.isEmpty {
+                    if visibleTranscript.isEmpty {
                         VStack(spacing: 8) {
-                            if store.isThreadInFlight(threadID: threadID) {
+                            if emptyStateShowsLoading {
                                 ProgressView()
                             }
-                            Text(store.isThreadInFlight(threadID: threadID) ? "Loading session…" : "No messages yet")
+                            Text(emptyStateShowsLoading ? "Loading session…" : "No messages yet")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .onChange(of: transcript.last?.id) { _, newID in
+                .onChange(of: visibleTranscript.last?.id) { _, newID in
                     guard newID != nil else { return }
                     if !hasPerformedInitialScroll {
                         scheduleInitialBottomSnap(proxy)
@@ -244,30 +304,36 @@ struct ChatView: View {
                     activeUserInputRequestID = nil
                     isSubmittingUserInput = false
                     isLoadingMoreHistory = false
+                    ignoredUserInputRequestIDs.removeAll()
+                    isPlanProgressExpanded = !store.planProgressDefaultCollapsed
                     scheduleInitialBottomSnap(proxy)
-                    async let refreshTask: Void = store.refreshThread(threadID: threadID)
-                    async let syncTask: Void = store.requestSessionSyncIfNeeded(threadID: threadID)
-                    _ = await (refreshTask, syncTask)
+                    isInitialThreadLoadPending = true
+                    await refreshThreadWithSessionWarmup()
+                    isInitialThreadLoadPending = false
                     syncUserInputDraftState()
                     scheduleInitialBottomSnap(proxy)
                     startLiveEventPolling()
                 }
                 .refreshable {
                     let wasPinned = isPinnedToBottom
-                    async let refreshTask: Void = store.refreshThread(threadID: threadID)
-                    async let syncTask: Void = store.requestSessionSyncIfNeeded(threadID: threadID)
-                    _ = await (refreshTask, syncTask)
+                    isInitialThreadLoadPending = true
+                    await refreshThreadWithSessionWarmup()
+                    isInitialThreadLoadPending = false
                     if wasPinned || !hasPerformedInitialScroll {
                         scrollToBottom(proxy, animated: false)
                     }
                 }
             }
+            .layoutPriority(1)
 
             Divider()
 
             VStack(spacing: 8) {
-                if let request = pendingUserInputRequest {
+                if let request = visiblePendingUserInputRequest {
                     userInputRequestCard(request)
+                }
+                if let request = ignoredPendingUserInputRequest {
+                    ignoredUserInputRestoreBar(request)
                 }
 
                 if let pendingImage {
@@ -461,9 +527,9 @@ struct ChatView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Refresh") {
                     Task {
-                        async let refreshTask: Void = store.refreshThread(threadID: threadID)
-                        async let syncTask: Void = store.requestSessionSyncIfNeeded(threadID: threadID)
-                        _ = await (refreshTask, syncTask)
+                        isInitialThreadLoadPending = true
+                        await refreshThreadWithSessionWarmup()
+                        isInitialThreadLoadPending = false
                     }
                 }
             }
@@ -480,13 +546,22 @@ struct ChatView: View {
         .onChange(of: draft) { _, next in
             store.setThreadDraft(next, threadID: threadID)
         }
-                .onChange(of: selectedPhotoItem) { _, newItem in
-                    guard let item = newItem else { return }
-                    Task { await loadPhotoPickerItem(item) }
-                }
-                .onChange(of: pendingUserInputRequest?.request_id) { _, _ in
-                    syncUserInputDraftState()
-                }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            guard let item = newItem else { return }
+            Task { await loadPhotoPickerItem(item) }
+        }
+        .onChange(of: pendingUserInputRequest?.request_id) { _, _ in
+            syncUserInputDraftState()
+            if let pendingUserInputRequest {
+                ignoredUserInputRequestIDs = ignoredUserInputRequestIDs.filter { $0 == pendingUserInputRequest.request_id }
+            } else {
+                ignoredUserInputRequestIDs.removeAll()
+            }
+        }
+        .onChange(of: store.chatMode(for: threadID)) { _, mode in
+            guard mode == "plan" else { return }
+            isPlanProgressExpanded = !store.planProgressDefaultCollapsed
+        }
     }
 
     @ViewBuilder
@@ -502,11 +577,15 @@ struct ChatView: View {
                         .foregroundStyle(.secondary)
                 }
                 if !textWindow.text.isEmpty {
-                    Text(textWindow.text)
-                        .textSelection(.enabled)
-                        .padding(10)
-                        .background(backgroundColor(role: msg.role), in: RoundedRectangle(cornerRadius: 10))
-                        .foregroundStyle(foregroundColor(role: msg.role))
+                    if let segments = parseProposedPlanSegments(in: textWindow.text), !segments.isEmpty {
+                        messageTextSegmentsView(segments: segments, role: msg.role)
+                    } else {
+                        Text(textWindow.text)
+                            .textSelection(.enabled)
+                            .padding(10)
+                            .background(backgroundColor(role: msg.role), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(foregroundColor(role: msg.role))
+                    }
                 }
                 if textWindow.isLogMessage {
                     HStack(spacing: 8) {
@@ -572,6 +651,108 @@ struct ChatView: View {
             }
             if msg.role != "user" { Spacer(minLength: 40) }
         }
+    }
+
+    private func isCriticalPlanSystemMessage(_ text: String) -> Bool {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return false }
+        return normalized.contains("failed")
+            || normalized.contains("error")
+            || normalized.contains("timed out")
+            || normalized.contains("timeout")
+            || normalized.contains("stopped")
+            || normalized.contains("interrupted")
+            || normalized.contains("session not loaded")
+    }
+
+    @ViewBuilder
+    private func messageTextSegmentsView(segments: [MessageTextSegment], role: String) -> some View {
+        VStack(alignment: role == "user" ? .trailing : .leading, spacing: 8) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                switch segment {
+                case .text(let text):
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        Text(trimmed)
+                            .textSelection(.enabled)
+                            .padding(10)
+                            .background(backgroundColor(role: role), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(foregroundColor(role: role))
+                    }
+                case .proposedPlan(let markdownBody):
+                    proposedPlanCard(markdownBody)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func proposedPlanCard(_ markdownBody: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "list.bullet.clipboard")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.blue)
+                Text(t("plan.proposed_plan.title", "Implementation Plan"))
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("proposed-plan-card")
+                Spacer()
+            }
+            if let markdown = try? AttributedString(markdown: markdownBody) {
+                Text(markdown)
+                    .textSelection(.enabled)
+            } else {
+                Text(markdownBody)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(12)
+        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.blue.opacity(0.25), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private func parseProposedPlanSegments(in text: String) -> [MessageTextSegment]? {
+        let startTag = "<proposed_plan>"
+        let endTag = "</proposed_plan>"
+        guard text.contains(startTag) else { return nil }
+        guard text.contains(endTag) else { return nil }
+
+        var segments: [MessageTextSegment] = []
+        var cursor = text.startIndex
+        while cursor < text.endIndex {
+            guard let startRange = text.range(of: startTag, range: cursor..<text.endIndex) else {
+                let tail = String(text[cursor...])
+                if !tail.isEmpty {
+                    segments.append(.text(tail))
+                }
+                break
+            }
+
+            if startRange.lowerBound > cursor {
+                let plain = String(text[cursor..<startRange.lowerBound])
+                if !plain.isEmpty {
+                    segments.append(.text(plain))
+                }
+            }
+
+            guard let endRange = text.range(of: endTag, range: startRange.upperBound..<text.endIndex) else {
+                return nil
+            }
+
+            let body = String(text[startRange.upperBound..<endRange.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty {
+                segments.append(.proposedPlan(body))
+            }
+
+            cursor = endRange.upperBound
+        }
+
+        return segments
     }
 
     @ViewBuilder
@@ -784,15 +965,48 @@ struct ChatView: View {
                     "session_not_loaded",
                     "session_not_found",
                 ].contains(normalizedStatus)
-                if needsSessionSync && tick % 8 == 0 {
+                let waitingForInitialMessages = transcript.isEmpty && store.isSessionBackedThread(threadID: threadID)
+                if (needsSessionSync && tick % 8 == 0) || (waitingForInitialMessages && tick % 3 == 0) {
                     await store.requestSessionSyncIfNeeded(threadID: threadID)
                 }
-                if waitingOnUserInput || (needsSessionSync && tick % 3 == 0) || tick % 6 == 0 {
+                if waitingOnUserInput || waitingForInitialMessages || (needsSessionSync && tick % 2 == 0) || tick % 4 == 0 {
                     await store.refreshThread(threadID: threadID)
                 }
                 let isActive = store.isThreadInFlight(threadID: threadID)
-                let sleepNs: UInt64 = isActive ? 700_000_000 : 2_000_000_000
+                let sleepNs: UInt64
+                if waitingForInitialMessages {
+                    sleepNs = 550_000_000
+                } else {
+                    sleepNs = isActive ? 450_000_000 : 1_200_000_000
+                }
                 try? await Task.sleep(nanoseconds: sleepNs)
+            }
+        }
+    }
+
+    private var emptyStateShowsLoading: Bool {
+        if isInitialThreadLoadPending { return true }
+        return store.isThreadInFlight(threadID: threadID)
+    }
+
+    private func refreshThreadWithSessionWarmup() async {
+        await store.refreshThread(threadID: threadID)
+        guard store.isSessionBackedThread(threadID: threadID) else { return }
+
+        let didRequestSync = await store.requestSessionSyncIfNeeded(threadID: threadID)
+        var shouldRetry = didRequestSync
+        if !shouldRetry {
+            shouldRetry = store.transcript(for: threadID).isEmpty
+        }
+        guard shouldRetry else { return }
+
+        let delays: [UInt64] = [350_000_000, 900_000_000]
+        for delay in delays {
+            try? await Task.sleep(nanoseconds: delay)
+            if Task.isCancelled { return }
+            await store.refreshThread(threadID: threadID)
+            if !store.transcript(for: threadID).isEmpty {
+                return
             }
         }
     }
@@ -859,6 +1073,36 @@ struct ChatView: View {
     }
 
     @ViewBuilder
+    private func planProgressSummaryBar(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "list.bullet.rectangle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.caption)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            if store.showThinkingMessages {
+                Button {
+                    isPlanProgressExpanded.toggle()
+                } label: {
+                    Text(
+                        isPlanProgressExpanded
+                        ? t("plan.progress.collapse_details", "Collapse details")
+                        : t("plan.progress.expand_details", "Expand details")
+                    )
+                    .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("plan-progress-toggle")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.08))
+    }
+
+    @ViewBuilder
     private func historyWindowControl(proxy: ScrollViewProxy) -> some View {
         HStack(spacing: 8) {
             Text(store.historyWindowLabel(threadID: threadID))
@@ -898,51 +1142,108 @@ struct ChatView: View {
 
     @ViewBuilder
     private func userInputRequestCard(_ request: ChatUserInputRequest) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "list.bullet.rectangle")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
-                Text("Plan selection required")
+                Text(t("plan.user_input.title", "Plan selection required"))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
             }
 
-            ForEach(request.questions) { question in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(question.header)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(question.question)
-                        .font(.subheadline)
-                    userInputQuestionInput(question)
-                }
-                .padding(.top, 2)
-            }
-
-            Button {
-                submitUserInputRequest(request)
-            } label: {
-                HStack {
-                    if isSubmittingUserInput {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "paperplane.fill")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(request.questions.enumerated()), id: \.element.id) { index, question in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("\(index + 1).")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(question.header)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(question.question)
+                                .font(.subheadline)
+                            userInputQuestionInput(question)
+                        }
+                        .padding(.top, 2)
                     }
-                    Text(isSubmittingUserInput ? "Submitting..." : "Submit selection")
-                        .font(.subheadline.weight(.semibold))
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .foregroundStyle(.white)
-                .background(Color.black, in: RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
-            .disabled(isSubmittingUserInput || !isUserInputSubmissionReady(request))
+            .frame(maxHeight: 260)
+
+            HStack(spacing: 10) {
+                Button {
+                    ignoreUserInputRequest(request)
+                } label: {
+                    Text(t("plan.user_input.ignore", "Ignore"))
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .foregroundStyle(.primary)
+                        .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmittingUserInput)
+                .accessibilityIdentifier("user-input-ignore")
+
+                Button {
+                    submitUserInputRequest(request)
+                } label: {
+                    HStack {
+                        if isSubmittingUserInput {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                        }
+                        Text(
+                            isSubmittingUserInput
+                            ? t("plan.user_input.submitting", "Submitting...")
+                            : t("plan.user_input.submit", "Submit")
+                        )
+                        .font(.subheadline.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .foregroundStyle(.white)
+                    .background(Color.black, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmittingUserInput || !isUserInputSubmissionReady(request))
+                .accessibilityIdentifier("user-input-submit")
+            }
         }
         .padding(10)
         .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func ignoredUserInputRestoreBar(_ request: ChatUserInputRequest) -> some View {
+        HStack(spacing: 8) {
+            Text(
+                String(
+                    format: t("plan.user_input.pending_compact", "Pending questions (%d)"),
+                    request.questions.count
+                )
+            )
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                restoreUserInputRequest(request)
+            } label: {
+                Text(t("plan.user_input.restore", "Restore"))
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("user-input-restore")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -950,7 +1251,8 @@ struct ChatView: View {
         let options = question.options ?? []
         if !options.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                    let optionMeta = userInputOptionMetadata(option)
                     let isSelected = (userInputSelections[question.id] ?? "") == option.label
                         && (userInputTextValues[question.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     Button {
@@ -961,19 +1263,30 @@ struct ChatView: View {
                             HStack(spacing: 6) {
                                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(isSelected ? .blue : .secondary)
-                                Text(option.label)
+                                Text("\(index + 1).")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(optionMeta.title)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
+                                if optionMeta.isRecommended {
+                                    Text(t("plan.user_input.recommended", "Recommended"))
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .foregroundStyle(.orange)
+                                        .background(Color.orange.opacity(0.15), in: Capsule())
+                                }
                                 Spacer()
                             }
                             Text(option.description)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .padding(.leading, 22)
+                                .padding(.leading, 34)
                         }
                         .padding(8)
                         .background(
-                            isSelected ? Color.blue.opacity(0.12) : Color(.secondarySystemFill),
+                            optionRowBackground(isSelected: isSelected, isRecommended: optionMeta.isRecommended),
                             in: RoundedRectangle(cornerRadius: 10)
                         )
                     }
@@ -984,7 +1297,9 @@ struct ChatView: View {
 
         let shouldShowTextInput = question.isOther == true || options.isEmpty
         if shouldShowTextInput {
-            let placeholder = question.isOther == true ? "Other..." : "Type your answer..."
+            let placeholder = question.isOther == true
+                ? t("plan.user_input.other_placeholder", "Other...")
+                : t("plan.user_input.answer_placeholder", "Type your answer...")
             let textBinding = Binding<String>(
                 get: { userInputTextValues[question.id] ?? "" },
                 set: { newValue in
@@ -1042,8 +1357,41 @@ struct ChatView: View {
                 userInputSelections.removeAll()
                 userInputTextValues.removeAll()
                 activeUserInputRequestID = nil
+                ignoredUserInputRequestIDs.removeAll()
             }
         }
+    }
+
+    private func ignoreUserInputRequest(_ request: ChatUserInputRequest) {
+        ignoredUserInputRequestIDs.insert(request.request_id)
+    }
+
+    private func restoreUserInputRequest(_ request: ChatUserInputRequest) {
+        ignoredUserInputRequestIDs.remove(request.request_id)
+    }
+
+    private func userInputOptionMetadata(_ option: ChatUserInputOption) -> UserInputOptionMetadata {
+        let raw = option.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = raw.lowercased()
+        let isRecommended = lowered.contains("(recommended)") || raw.contains("（推荐）")
+        let title = raw
+            .replacingOccurrences(of: "(Recommended)", with: "", options: [.caseInsensitive])
+            .replacingOccurrences(of: "（推荐）", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return UserInputOptionMetadata(
+            title: title.isEmpty ? raw : title,
+            isRecommended: isRecommended
+        )
+    }
+
+    private func optionRowBackground(isSelected: Bool, isRecommended: Bool) -> Color {
+        if isSelected {
+            return Color.blue.opacity(0.12)
+        }
+        if isRecommended {
+            return Color.orange.opacity(0.10)
+        }
+        return Color(.secondarySystemFill)
     }
 
     private func syncUserInputDraftState() {
@@ -1245,11 +1593,25 @@ struct ChatView: View {
         .background(Color(.secondarySystemFill), in: Capsule())
     }
 
+    private func t(_ key: String, _ fallback: String) -> String {
+        NSLocalizedString(key, tableName: nil, bundle: .main, value: fallback, comment: "")
+    }
+
     private struct PendingImageAttachment: Identifiable {
         let id = UUID()
         let dataURL: String
         let previewData: Data
         let bytes: Int
+    }
+
+    private enum MessageTextSegment {
+        case text(String)
+        case proposedPlan(String)
+    }
+
+    private struct UserInputOptionMetadata {
+        let title: String
+        let isRecommended: Bool
     }
 
     private struct MessageTextWindow {

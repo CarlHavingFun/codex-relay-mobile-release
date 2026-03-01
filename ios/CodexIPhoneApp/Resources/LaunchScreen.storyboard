@@ -14,7 +14,7 @@
                     <view key="view" contentMode="scaleToFill" id="dXc-H9-8vG">
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <subviews>
-                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Codex Relay Mobile" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="5wI-4N-qM9">
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="CodexIPhone" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="5wI-4N-qM9">
                                 <rect key="frame" x="75" y="411" width="243" height="31"/>
                                 <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="26"/>
                                 <color key="textColor" systemColor="labelColor"/>

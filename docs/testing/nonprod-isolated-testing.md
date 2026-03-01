@@ -35,7 +35,7 @@ Use a separate env with:
 - `SERVICE_LABEL_PREFIX=com.yourorg.codexrelay.staging`
 - `STATE_DIR=/path/to/Codex_Iphone_release/state_staging`
 - `CONNECTOR_WORKSPACE=staging`
-- `RELAY_BASE_URL=https://my-agent.com.cn/codex-relay-staging`
+- `RELAY_BASE_URL=https://relay-staging.example.com`
 - staging token
 
 This keeps existing launchd services and state untouched.

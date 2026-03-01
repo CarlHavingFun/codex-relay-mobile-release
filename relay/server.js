@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const { URL } = require('node:url');
 const { DatabaseSync } = require('node:sqlite');
+const { resolveAuthContext } = require('./lib/auth_context');
 
 const ROOT = path.resolve(__dirname, '..');
 const ENV_FILE = process.env.CONFIG_ENV_FILE || path.join(ROOT, 'config', '.env');
@@ -24,6 +25,9 @@ if (fs.existsSync(ENV_FILE)) {
 
 const PORT = Number(process.env.RELAY_PORT || 8787);
 const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
+const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET || process.env.PLATFORM_JWT_SECRET || '';
+const RELAY_JWT_ISSUER = process.env.RELAY_JWT_ISSUER || process.env.PLATFORM_JWT_ISSUER || 'codex-platform';
+const RELAY_JWT_AUDIENCE = process.env.RELAY_JWT_AUDIENCE || process.env.PLATFORM_JWT_RELAY_AUDIENCE || 'relay-api';
 const DEFAULT_WORKSPACE = process.env.DEFAULT_WORKSPACE || 'default';
 const LEGACY_RUNNER_API_PREFIX = '/legacy-runner';
 const CONNECTOR_API_PREFIX = '/codex-iphone-connector';
@@ -247,114 +251,238 @@ function ensureTableColumn(table, column, sqlType) {
 ensureTableColumn('chat_jobs', 'input_items_json', 'TEXT');
 ensureTableColumn('chat_jobs', 'stop_requested_at', 'TEXT');
 ensureTableColumn('chat_jobs', 'stop_requested_by', 'TEXT');
+ensureTableColumn('runners', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('events', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('approvals', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('tasks_current', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('chat_threads', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('chat_jobs', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('chat_events', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('chat_user_input_requests', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('connector_runners', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('connector_session_sync_requests', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('connector_auth_relogin_requests', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+ensureTableColumn('session_backfill_runs', 'tenant_id', `TEXT NOT NULL DEFAULT 'legacy'`);
+db.exec(`
+CREATE INDEX IF NOT EXISTS idx_runners_tenant_workspace_updated ON runners(tenant_id, workspace, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_tenant_workspace_ts ON events(tenant_id, workspace, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_approvals_tenant_workspace_state ON approvals(tenant_id, workspace, state, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_current_tenant_workspace ON tasks_current(tenant_id, workspace);
+CREATE INDEX IF NOT EXISTS idx_chat_threads_tenant_workspace_updated ON chat_threads(tenant_id, workspace, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_jobs_tenant_workspace_status_created ON chat_jobs(tenant_id, workspace, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_events_tenant_workspace_ts ON chat_events(tenant_id, workspace, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_user_input_requests_tenant_workspace_status
+  ON chat_user_input_requests(tenant_id, workspace, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_connector_runners_tenant_workspace_updated ON connector_runners(tenant_id, workspace, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_session_sync_requests_tenant_workspace_status
+  ON connector_session_sync_requests(tenant_id, workspace, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_auth_relogin_requests_tenant_workspace_status
+  ON connector_auth_relogin_requests(tenant_id, workspace, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_backfill_runs_tenant_workspace_started
+  ON session_backfill_runs(tenant_id, workspace, started_at DESC);
+`);
+db.exec(`
+UPDATE runners
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE events
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE approvals
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE tasks_current
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE chat_threads
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE chat_jobs
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE chat_events
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE chat_user_input_requests
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE connector_runners
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE connector_session_sync_requests
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE connector_auth_relogin_requests
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+UPDATE session_backfill_runs
+SET tenant_id = CASE
+  WHEN INSTR(workspace, '::') > 0 THEN SUBSTR(workspace, 1, INSTR(workspace, '::') - 1)
+  ELSE 'legacy'
+END
+WHERE tenant_id IS NULL OR TRIM(tenant_id) = '' OR tenant_id = 'legacy';
+`);
 
 const upsertRunnerStmt = db.prepare(`
-INSERT INTO runners (runner_id, workspace, online, current_task_json, last_success_at, last_error, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO runners (runner_id, tenant_id, workspace, online, current_task_json, last_success_at, last_error, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(runner_id) DO UPDATE SET
   workspace=excluded.workspace,
+  tenant_id=excluded.tenant_id,
   online=excluded.online,
   current_task_json=excluded.current_task_json,
   last_success_at=excluded.last_success_at,
   last_error=excluded.last_error,
   updated_at=excluded.updated_at
+WHERE runners.tenant_id = excluded.tenant_id
 `);
 
 const insertEventStmt = db.prepare(`
-INSERT OR REPLACE INTO events (id, runner_id, workspace, task_id, level, phase, message, payload_json, ts)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO events (id, runner_id, workspace, task_id, level, phase, message, payload_json, ts, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  runner_id=excluded.runner_id,
+  workspace=excluded.workspace,
+  task_id=excluded.task_id,
+  level=excluded.level,
+  phase=excluded.phase,
+  message=excluded.message,
+  payload_json=excluded.payload_json,
+  ts=excluded.ts
+WHERE events.tenant_id = excluded.tenant_id
 `);
 
 const upsertApprovalStmt = db.prepare(`
-INSERT INTO approvals (id, runner_id, workspace, task_id, task_text, risk_reason_json, state, decision_by, decision_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO approvals (id, runner_id, workspace, task_id, task_text, risk_reason_json, state, decision_by, decision_at, created_at, updated_at, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
+  tenant_id=excluded.tenant_id,
   state=excluded.state,
   decision_by=excluded.decision_by,
   decision_at=excluded.decision_at,
   updated_at=excluded.updated_at,
   risk_reason_json=excluded.risk_reason_json
+WHERE approvals.tenant_id = excluded.tenant_id
 `);
 
 const upsertTaskStmt = db.prepare(`
-INSERT INTO tasks_current (workspace, task_id, task_text, task_mode, status, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO tasks_current (workspace, task_id, task_text, task_mode, status, updated_at, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace) DO UPDATE SET
+  tenant_id=excluded.tenant_id,
   task_id=excluded.task_id,
   task_text=excluded.task_text,
   task_mode=excluded.task_mode,
   status=excluded.status,
   updated_at=excluded.updated_at
+WHERE tasks_current.tenant_id = excluded.tenant_id
 `);
 
 const selectChatThreadStmt = db.prepare(`SELECT * FROM chat_threads WHERE thread_id = ?`);
 const insertChatThreadStmt = db.prepare(`
-INSERT INTO chat_threads (thread_id, workspace, title, external_thread_id, source, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chat_threads (thread_id, workspace, title, external_thread_id, source, status, created_at, updated_at, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const updateChatThreadStmt = db.prepare(`
 UPDATE chat_threads
 SET workspace = ?, title = ?, external_thread_id = ?, source = ?, status = ?, updated_at = ?
-WHERE thread_id = ?
+WHERE thread_id = ? AND tenant_id = ?
 `);
 const updateThreadStatusStmt = db.prepare(`
 UPDATE chat_threads
 SET status = ?, updated_at = ?
-WHERE thread_id = ?
+WHERE thread_id = ? AND tenant_id = ?
 `);
 const updateThreadExternalIdStmt = db.prepare(`
 UPDATE chat_threads
 SET external_thread_id = ?, source = 'codex', updated_at = ?
-WHERE thread_id = ?
+WHERE thread_id = ? AND tenant_id = ?
 `);
 const selectCodexThreadsAnyStmt = db.prepare(`
 SELECT thread_id FROM chat_threads
-WHERE source = 'codex' AND status != 'deleted'
+WHERE source = 'codex' AND status != 'deleted' AND tenant_id = ?
 `);
 const selectCodexThreadsByWorkspaceStmt = db.prepare(`
 SELECT thread_id FROM chat_threads
-WHERE source = 'codex' AND status != 'deleted' AND workspace = ?
+WHERE source = 'codex' AND status != 'deleted' AND workspace = ? AND tenant_id = ?
 `);
 const selectIdleIosPlaceholderThreadsAnyStmt = db.prepare(`
 SELECT thread_id, updated_at FROM chat_threads
 WHERE source = 'ios'
+  AND tenant_id = ?
   AND status = 'idle'
   AND (external_thread_id IS NULL OR TRIM(external_thread_id) = '')
 `);
 const selectIdleIosPlaceholderThreadsByWorkspaceStmt = db.prepare(`
 SELECT thread_id, updated_at FROM chat_threads
 WHERE workspace = ?
+  AND tenant_id = ?
   AND source = 'ios'
   AND status = 'idle'
   AND (external_thread_id IS NULL OR TRIM(external_thread_id) = '')
 `);
 const selectChatThreadByExternalPreferLocalStmt = db.prepare(`
 SELECT * FROM chat_threads
-WHERE external_thread_id = ? AND status != 'deleted'
+WHERE external_thread_id = ? AND status != 'deleted' AND tenant_id = ?
 ORDER BY CASE WHEN source IN ('ios', 'connector') THEN 0 ELSE 1 END, updated_at DESC
 LIMIT 1
 `);
 const markThreadDeletedStmt = db.prepare(`
 UPDATE chat_threads
 SET status = 'deleted', updated_at = ?
-WHERE thread_id = ? AND status != 'deleted'
+WHERE thread_id = ? AND status != 'deleted' AND tenant_id = ?
 `);
 
 const insertChatJobStmt = db.prepare(`
-INSERT INTO chat_jobs (job_id, thread_id, workspace, input_text, input_items_json, policy_json, status, connector_id, turn_id, idempotency_key, error_code, error_message, stop_requested_at, stop_requested_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chat_jobs (job_id, thread_id, workspace, input_text, input_items_json, policy_json, status, connector_id, turn_id, idempotency_key, error_code, error_message, stop_requested_at, stop_requested_by, created_at, updated_at, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const selectChatJobStmt = db.prepare(`SELECT * FROM chat_jobs WHERE job_id = ?`);
-const selectChatJobByIdempotencyStmt = db.prepare(`SELECT * FROM chat_jobs WHERE idempotency_key = ?`);
+const selectChatJobByIdempotencyStmt = db.prepare(`SELECT * FROM chat_jobs WHERE idempotency_key = ? AND tenant_id = ?`);
 const selectQueuedChatJobStmt = db.prepare(`
 SELECT queued.*
 FROM chat_jobs AS queued
 WHERE queued.workspace = ?
+  AND queued.tenant_id = ?
   AND queued.status = 'queued'
   AND NOT EXISTS (
     SELECT 1
     FROM chat_jobs AS active
     WHERE active.thread_id = queued.thread_id
+      AND active.tenant_id = queued.tenant_id
       AND active.status IN ('claimed', 'running')
   )
 ORDER BY queued.created_at ASC
@@ -364,10 +492,12 @@ const selectQueuedAnyChatJobStmt = db.prepare(`
 SELECT queued.*
 FROM chat_jobs AS queued
 WHERE queued.status = 'queued'
+  AND queued.tenant_id = ?
   AND NOT EXISTS (
     SELECT 1
     FROM chat_jobs AS active
     WHERE active.thread_id = queued.thread_id
+      AND active.tenant_id = queued.tenant_id
       AND active.status IN ('claimed', 'running')
   )
 ORDER BY queued.created_at ASC
@@ -376,63 +506,63 @@ LIMIT 1
 const claimChatJobStmt = db.prepare(`
 UPDATE chat_jobs
 SET status = 'claimed', connector_id = ?, updated_at = ?
-WHERE job_id = ? AND status = 'queued'
+WHERE job_id = ? AND status = 'queued' AND tenant_id = ?
 `);
 const markChatJobRunningStmt = db.prepare(`
 UPDATE chat_jobs
 SET status = 'running', updated_at = ?
-WHERE job_id = ? AND status IN ('claimed', 'running')
+WHERE job_id = ? AND status IN ('claimed', 'running') AND tenant_id = ?
 `);
 const touchChatJobStmt = db.prepare(`
 UPDATE chat_jobs
 SET updated_at = ?
-WHERE job_id = ?
+WHERE job_id = ? AND tenant_id = ?
 `);
 const updateChatJobTurnStmt = db.prepare(`
 UPDATE chat_jobs
 SET turn_id = ?, updated_at = ?
-WHERE job_id = ?
+WHERE job_id = ? AND tenant_id = ?
 `);
 const completeChatJobStmt = db.prepare(`
 UPDATE chat_jobs
 SET status = 'completed', turn_id = ?, updated_at = ?, error_code = NULL, error_message = NULL, stop_requested_at = NULL, stop_requested_by = NULL
-WHERE job_id = ?
+WHERE job_id = ? AND tenant_id = ?
 `);
 const interruptChatJobStmt = db.prepare(`
 UPDATE chat_jobs
 SET status = 'interrupted', turn_id = ?, error_code = ?, error_message = ?, updated_at = ?, stop_requested_at = NULL, stop_requested_by = NULL
-WHERE job_id = ?
+WHERE job_id = ? AND tenant_id = ?
 `);
 const timeoutChatJobStmt = db.prepare(`
 UPDATE chat_jobs
 SET status = 'timeout', turn_id = ?, error_code = ?, error_message = ?, updated_at = ?, stop_requested_at = NULL, stop_requested_by = NULL
-WHERE job_id = ?
+WHERE job_id = ? AND tenant_id = ?
 `);
 const failChatJobStmt = db.prepare(`
 UPDATE chat_jobs
 SET status = 'failed', turn_id = ?, error_code = ?, error_message = ?, updated_at = ?, stop_requested_at = NULL, stop_requested_by = NULL
-WHERE job_id = ?
+WHERE job_id = ? AND tenant_id = ?
 `);
 const requestChatJobStopStmt = db.prepare(`
 UPDATE chat_jobs
 SET stop_requested_at = ?, stop_requested_by = ?, updated_at = ?
-WHERE job_id = ? AND status IN ('claimed', 'running')
+WHERE job_id = ? AND status IN ('claimed', 'running') AND tenant_id = ?
 `);
 const selectLatestActiveChatJobByThreadStmt = db.prepare(`
 SELECT * FROM chat_jobs
-WHERE thread_id = ? AND status IN ('queued', 'claimed', 'running')
+WHERE thread_id = ? AND status IN ('queued', 'claimed', 'running') AND tenant_id = ?
 ORDER BY created_at DESC
 LIMIT 1
 `);
 const selectQueuedChatJobsByThreadStmt = db.prepare(`
 SELECT * FROM chat_jobs
-WHERE thread_id = ? AND status = 'queued'
+WHERE thread_id = ? AND status = 'queued' AND tenant_id = ?
 ORDER BY created_at ASC
 LIMIT 100
 `);
 const selectChatJobsByThreadStmt = db.prepare(`
 SELECT * FROM chat_jobs
-WHERE thread_id = ?
+WHERE thread_id = ? AND tenant_id = ?
 ORDER BY created_at DESC
 LIMIT 50
 `);
@@ -440,15 +570,15 @@ LIMIT 50
 const nextChatSeqStmt = db.prepare(`
 SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq
 FROM chat_events
-WHERE thread_id = ?
+WHERE thread_id = ? AND tenant_id = ?
 `);
 const insertChatEventStmt = db.prepare(`
-INSERT INTO chat_events (thread_id, seq, workspace, job_id, turn_id, type, delta, payload_json, ts)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chat_events (thread_id, seq, workspace, job_id, turn_id, type, delta, payload_json, ts, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const selectChatEventsStmt = db.prepare(`
 SELECT * FROM chat_events
-WHERE thread_id = ? AND seq > ?
+WHERE thread_id = ? AND seq > ? AND tenant_id = ?
 ORDER BY seq ASC
 LIMIT ?
 `);
@@ -456,6 +586,7 @@ const selectRecentTranscriptEventsByThreadStmt = db.prepare(`
 SELECT seq, type, delta, payload_json, ts
 FROM chat_events
 WHERE thread_id = ?
+  AND tenant_id = ?
   AND type IN ('user.message', 'assistant.message')
 ORDER BY seq DESC
 LIMIT 2000
@@ -463,44 +594,44 @@ LIMIT 2000
 const countChatEventsByThreadStmt = db.prepare(`
 SELECT COUNT(*) AS count
 FROM chat_events
-WHERE thread_id = ?
+WHERE thread_id = ? AND tenant_id = ?
 `);
 const countChatJobsByThreadStmt = db.prepare(`
 SELECT COUNT(*) AS count
 FROM chat_jobs
-WHERE thread_id = ?
+WHERE thread_id = ? AND tenant_id = ?
 `);
 const insertChatUserInputRequestStmt = db.prepare(`
 INSERT INTO chat_user_input_requests (
   request_id, job_id, thread_id, workspace, connector_id,
   turn_id, item_id, questions_json, answers_json, status,
-  created_at, answered_at, completed_at, updated_at
+  created_at, answered_at, completed_at, updated_at, tenant_id
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?, NULL, NULL, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?, NULL, NULL, ?, ?)
 `);
 const selectChatUserInputRequestStmt = db.prepare(`
 SELECT * FROM chat_user_input_requests
-WHERE request_id = ?
+WHERE request_id = ? AND tenant_id = ?
 `);
 const selectChatUserInputRequestByJobStmt = db.prepare(`
 SELECT * FROM chat_user_input_requests
-WHERE request_id = ? AND job_id = ?
+WHERE request_id = ? AND job_id = ? AND tenant_id = ?
 `);
 const selectLatestPendingChatUserInputRequestByThreadStmt = db.prepare(`
 SELECT * FROM chat_user_input_requests
-WHERE thread_id = ? AND status = 'pending'
+WHERE thread_id = ? AND status = 'pending' AND tenant_id = ?
 ORDER BY created_at DESC
 LIMIT 1
 `);
 const markChatUserInputRequestAnsweredStmt = db.prepare(`
 UPDATE chat_user_input_requests
 SET status = 'answered', answers_json = ?, answered_at = ?, updated_at = ?
-WHERE request_id = ? AND thread_id = ? AND status = 'pending'
+WHERE request_id = ? AND thread_id = ? AND status = 'pending' AND tenant_id = ?
 `);
 const markChatUserInputRequestCompletedStmt = db.prepare(`
 UPDATE chat_user_input_requests
 SET status = 'completed', completed_at = ?, updated_at = ?
-WHERE request_id = ? AND job_id = ? AND connector_id = ? AND status = 'answered'
+WHERE request_id = ? AND job_id = ? AND connector_id = ? AND status = 'answered' AND tenant_id = ?
 `);
 
 db.exec(`
@@ -512,10 +643,11 @@ WHERE source = 'ios'
 `);
 
 const upsertConnectorStmt = db.prepare(`
-INSERT INTO connector_runners (connector_id, workspace, status, version, capabilities_json, last_error_code, last_error_message, last_heartbeat_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO connector_runners (connector_id, workspace, status, version, capabilities_json, last_error_code, last_error_message, last_heartbeat_at, created_at, updated_at, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(connector_id) DO UPDATE SET
   workspace=excluded.workspace,
+  tenant_id=excluded.tenant_id,
   status=excluded.status,
   version=excluded.version,
   capabilities_json=excluded.capabilities_json,
@@ -523,42 +655,46 @@ ON CONFLICT(connector_id) DO UPDATE SET
   last_error_message=excluded.last_error_message,
   last_heartbeat_at=excluded.last_heartbeat_at,
   updated_at=excluded.updated_at
+WHERE connector_runners.tenant_id = excluded.tenant_id
 `);
-const selectConnectorStmt = db.prepare(`SELECT * FROM connector_runners WHERE connector_id = ?`);
+const selectConnectorStmt = db.prepare(`SELECT * FROM connector_runners WHERE connector_id = ? AND tenant_id = ?`);
 const insertSessionSyncRequestStmt = db.prepare(`
-INSERT INTO connector_session_sync_requests (request_id, workspace, thread_id, requested_by, status, connector_id, error, created_at, claimed_at, completed_at)
-VALUES (?, ?, ?, ?, 'pending', NULL, NULL, ?, NULL, NULL)
+INSERT INTO connector_session_sync_requests (request_id, workspace, thread_id, requested_by, status, connector_id, error, created_at, claimed_at, completed_at, tenant_id)
+VALUES (?, ?, ?, ?, 'pending', NULL, NULL, ?, NULL, NULL, ?)
 `);
 const selectSessionSyncRequestStmt = db.prepare(`
 SELECT * FROM connector_session_sync_requests
-WHERE request_id = ?
+WHERE request_id = ? AND tenant_id = ?
 `);
 const selectPendingSessionSyncForWorkspaceStmt = db.prepare(`
 SELECT * FROM connector_session_sync_requests
 WHERE status = 'pending'
-  AND (workspace = '*' OR workspace = ?)
+  AND tenant_id = ?
+  AND (workspace = ? OR workspace = ?)
 ORDER BY created_at ASC
 LIMIT 1
 `);
 const selectPendingAnySessionSyncStmt = db.prepare(`
 SELECT * FROM connector_session_sync_requests
 WHERE status = 'pending'
+  AND tenant_id = ?
+  AND workspace LIKE ?
 ORDER BY created_at ASC
 LIMIT 1
 `);
 const claimSessionSyncRequestStmt = db.prepare(`
 UPDATE connector_session_sync_requests
 SET status = 'claimed', connector_id = ?, claimed_at = ?
-WHERE request_id = ? AND status = 'pending'
+WHERE request_id = ? AND status = 'pending' AND tenant_id = ?
 `);
 const completeSessionSyncRequestStmt = db.prepare(`
 UPDATE connector_session_sync_requests
 SET status = ?, completed_at = ?, error = ?
-WHERE request_id = ? AND status = 'claimed' AND connector_id = ?
+WHERE request_id = ? AND status = 'claimed' AND connector_id = ? AND tenant_id = ?
 `);
 const selectSessionSyncRequestsStmt = db.prepare(`
 SELECT * FROM connector_session_sync_requests
-WHERE workspace = ?
+WHERE workspace = ? AND tenant_id = ?
 ORDER BY created_at DESC
 LIMIT ?
 `);
@@ -567,56 +703,59 @@ const insertAuthReloginRequestStmt = db.prepare(`
 INSERT INTO connector_auth_relogin_requests (
   request_id, workspace, requested_by, status, connector_id,
   auth_url, user_code, verification_uri_complete, expires_at, message, error,
-  created_at, claimed_at, completed_at, updated_at
+  created_at, claimed_at, completed_at, updated_at, tenant_id
 )
-VALUES (?, ?, ?, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, ?)
+VALUES (?, ?, ?, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, ?, ?)
 `);
 const selectAuthReloginRequestStmt = db.prepare(`
 SELECT * FROM connector_auth_relogin_requests
-WHERE request_id = ?
+WHERE request_id = ? AND tenant_id = ?
 `);
 const selectPendingAuthReloginForWorkspaceStmt = db.prepare(`
 SELECT * FROM connector_auth_relogin_requests
 WHERE status = 'pending'
-  AND (workspace = '*' OR workspace = ?)
+  AND tenant_id = ?
+  AND (workspace = ? OR workspace = ?)
 ORDER BY created_at ASC
 LIMIT 1
 `);
 const selectPendingAnyAuthReloginStmt = db.prepare(`
 SELECT * FROM connector_auth_relogin_requests
 WHERE status = 'pending'
+  AND tenant_id = ?
+  AND workspace LIKE ?
 ORDER BY created_at ASC
 LIMIT 1
 `);
 const claimAuthReloginRequestStmt = db.prepare(`
 UPDATE connector_auth_relogin_requests
 SET status = 'claimed', connector_id = ?, claimed_at = ?, updated_at = ?
-WHERE request_id = ? AND status = 'pending'
+WHERE request_id = ? AND status = 'pending' AND tenant_id = ?
 `);
 const updateAuthReloginRequestProgressStmt = db.prepare(`
 UPDATE connector_auth_relogin_requests
 SET status = ?, auth_url = ?, user_code = ?, verification_uri_complete = ?, expires_at = ?, message = ?, error = ?, updated_at = ?
-WHERE request_id = ? AND connector_id = ? AND status IN ('claimed', 'awaiting_user', 'running')
+WHERE request_id = ? AND connector_id = ? AND status IN ('claimed', 'awaiting_user', 'running') AND tenant_id = ?
 `);
 const completeAuthReloginRequestStmt = db.prepare(`
 UPDATE connector_auth_relogin_requests
 SET status = ?, message = ?, error = ?, completed_at = ?, updated_at = ?
-WHERE request_id = ? AND connector_id = ? AND status IN ('claimed', 'awaiting_user', 'running')
+WHERE request_id = ? AND connector_id = ? AND status IN ('claimed', 'awaiting_user', 'running') AND tenant_id = ?
 `);
 
 const insertBackfillRunStmt = db.prepare(`
-INSERT INTO session_backfill_runs (run_id, workspace, status, scanned_count, imported_count, started_at, completed_at, error)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO session_backfill_runs (run_id, workspace, status, scanned_count, imported_count, started_at, completed_at, error, tenant_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const completeBackfillRunStmt = db.prepare(`
 UPDATE session_backfill_runs
 SET status = ?, scanned_count = ?, imported_count = ?, completed_at = ?, error = ?
-WHERE run_id = ?
+WHERE run_id = ? AND tenant_id = ?
 `);
-const selectBackfillRunStmt = db.prepare(`SELECT * FROM session_backfill_runs WHERE run_id = ?`);
+const selectBackfillRunStmt = db.prepare(`SELECT * FROM session_backfill_runs WHERE run_id = ? AND tenant_id = ?`);
 const selectBackfillRunsStmt = db.prepare(`
 SELECT * FROM session_backfill_runs
-WHERE workspace = ?
+WHERE workspace = ? AND tenant_id = ?
 ORDER BY started_at DESC
 LIMIT ?
 `);
@@ -650,6 +789,10 @@ function badRequest(res, message) {
 
 function unauthorized(res) {
   json(res, 401, { ok: false, error: 'unauthorized' });
+}
+
+function forbidden(res, message = 'forbidden') {
+  json(res, 403, { ok: false, error: message });
 }
 
 function parseBody(req) {
@@ -729,10 +872,85 @@ async function proxyToControlPlane(req, res, url) {
   res.end('');
 }
 
-function isAuthorized(req) {
-  if (!RELAY_TOKEN) return true;
-  const auth = req.headers.authorization || '';
-  return auth === `Bearer ${RELAY_TOKEN}`;
+function authContextFromRequest(req) {
+  const resolved = resolveAuthContext(req, {
+    legacyRelayToken: RELAY_TOKEN,
+    jwtSecret: RELAY_JWT_SECRET,
+    jwtIssuer: RELAY_JWT_ISSUER,
+    jwtAudience: RELAY_JWT_AUDIENCE,
+  });
+  if (!resolved.ok) {
+    return null;
+  }
+  return resolved.context;
+}
+
+function tenantIdFromAuth(authContext) {
+  const value = String(authContext?.tenantId || '').trim();
+  return value || 'legacy';
+}
+
+function tenantWorkspacePrefix(authContext) {
+  return `${tenantIdFromAuth(authContext)}::`;
+}
+
+function allWorkspaceForTenant(authContext) {
+  return `${tenantWorkspacePrefix(authContext)}*`;
+}
+
+function tenantIdFromWorkspace(value) {
+  const text = String(value || '').trim();
+  if (!text) return 'legacy';
+  const marker = text.indexOf('::');
+  if (marker > 0) return text.slice(0, marker);
+  return 'legacy';
+}
+
+function normalizeInternalWorkspaceName(value) {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (!text) return '';
+  const marker = text.indexOf('::');
+  if (marker >= 0) {
+    return text.slice(marker + 2);
+  }
+  return text;
+}
+
+function publicWorkspaceName(value) {
+  const normalized = normalizeInternalWorkspaceName(value);
+  if (!normalized || normalized === '*') return '*';
+  return normalized;
+}
+
+function workspaceTenantMatches(value, authContext) {
+  const prefix = tenantWorkspacePrefix(authContext);
+  return String(value || '').startsWith(prefix);
+}
+
+function rowBelongsToTenant(row, authContext) {
+  if (!row || typeof row !== 'object') return false;
+  const expectedTenant = tenantIdFromAuth(authContext);
+  const rowTenant = String(row.tenant_id || '').trim();
+  if (rowTenant) return rowTenant === expectedTenant;
+  return workspaceTenantMatches(row.workspace, authContext);
+}
+
+function actorAllowed(authContext, allowedTypes) {
+  const actorType = String(authContext?.actorType || '').trim().toLowerCase();
+  if (actorType === 'legacy') return true;
+  const set = new Set((allowedTypes || []).map((item) => String(item || '').trim().toLowerCase()));
+  return set.has(actorType);
+}
+
+function workspaceFrom(value, authContext, options = {}) {
+  const allowAll = options.allowAll === true;
+  const incoming = String(value || '').trim();
+  const isAll = !incoming || incoming.toLowerCase() === 'all' || incoming === '*';
+  const workspaceName = isAll
+    ? (allowAll ? '*' : DEFAULT_WORKSPACE)
+    : normalizeInternalWorkspaceName(incoming) || DEFAULT_WORKSPACE;
+  return `${tenantWorkspacePrefix(authContext)}${workspaceName}`;
 }
 
 function decodeJSON(text, fallback) {
@@ -765,14 +983,9 @@ function normalizeApiPath(pathname) {
   return value;
 }
 
-function workspaceFrom(value) {
-  const s = String(value || '').trim();
-  return s || DEFAULT_WORKSPACE;
-}
-
 function isAllWorkspaces(value) {
-  const s = String(value || '').trim().toLowerCase();
-  return !s || s === '*' || s === 'all';
+  const normalized = normalizeInternalWorkspaceName(String(value || '')).toLowerCase();
+  return !normalized || normalized === '*' || normalized === 'all';
 }
 
 function normalizeTimestamp(value, fallback = nowIso()) {
@@ -889,7 +1102,7 @@ function normalizeApproval(row) {
   return {
     id: row.id,
     runner_id: row.runner_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     task_id: row.task_id,
     task_text: row.task_text,
     risk_reason: decodeJSON(row.risk_reason_json, []),
@@ -904,7 +1117,7 @@ function normalizeApproval(row) {
 function normalizeChatThread(row) {
   return {
     thread_id: row.thread_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     title: row.title || '',
     external_thread_id: row.external_thread_id,
     source: row.source,
@@ -918,7 +1131,7 @@ function normalizeChatJob(row) {
   return {
     job_id: row.job_id,
     thread_id: row.thread_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     input_text: row.input_text,
     input_items: decodeJSON(row.input_items_json, null),
     policy: decodeJSON(row.policy_json, null),
@@ -939,7 +1152,7 @@ function normalizeChatEvent(row) {
   return {
     seq: row.seq,
     thread_id: row.thread_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     job_id: row.job_id,
     turn_id: row.turn_id,
     type: row.type,
@@ -954,7 +1167,7 @@ function normalizeChatUserInputRequest(row) {
     request_id: row.request_id,
     job_id: row.job_id,
     thread_id: row.thread_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     connector_id: row.connector_id,
     turn_id: row.turn_id,
     item_id: row.item_id,
@@ -971,7 +1184,7 @@ function normalizeChatUserInputRequest(row) {
 function normalizeConnector(row) {
   return {
     connector_id: row.connector_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     status: row.status,
     version: row.version,
     capabilities: decodeJSON(row.capabilities_json, null),
@@ -986,7 +1199,7 @@ function normalizeConnector(row) {
 function normalizeSessionSyncRequest(row) {
   return {
     request_id: row.request_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     thread_id: row.thread_id,
     requested_by: row.requested_by,
     status: row.status,
@@ -1001,7 +1214,7 @@ function normalizeSessionSyncRequest(row) {
 function normalizeAuthReloginRequest(row) {
   return {
     request_id: row.request_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     requested_by: row.requested_by,
     status: row.status,
     connector_id: row.connector_id,
@@ -1021,7 +1234,7 @@ function normalizeAuthReloginRequest(row) {
 function normalizeBackfillRun(row) {
   return {
     run_id: row.run_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     status: row.status,
     scanned_count: row.scanned_count,
     imported_count: row.imported_count,
@@ -1031,15 +1244,16 @@ function normalizeBackfillRun(row) {
   };
 }
 
-function statusForWorkspace(workspace) {
+function statusForWorkspace(workspace, authContext) {
+  const tenantId = tenantIdFromAuth(authContext);
   const row = db
-    .prepare(`SELECT * FROM runners WHERE workspace = ? ORDER BY updated_at DESC LIMIT 1`)
-    .get(workspace);
+    .prepare(`SELECT * FROM runners WHERE workspace = ? AND tenant_id = ? ORDER BY updated_at DESC LIMIT 1`)
+    .get(workspace, tenantId);
   if (!row) return null;
   const runnerOnline = !!row.online;
   return {
     runner_id: row.runner_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     runner_online: runnerOnline,
     online: runnerOnline,
     current_task: row.current_task_json ? decodeJSON(row.current_task_json, null) : null,
@@ -1061,27 +1275,32 @@ function heartbeatIsStale(value, staleSeconds) {
   return (Date.now() - ts) > (Math.max(1, staleSeconds) * 1000);
 }
 
-function latestRunnerRowForScope(workspace, includeAll) {
-  if (includeAll) {
-    return db.prepare(`SELECT * FROM runners ORDER BY updated_at DESC LIMIT 1`).get() || null;
-  }
-  return db
-    .prepare(`SELECT * FROM runners WHERE workspace = ? ORDER BY updated_at DESC LIMIT 1`)
-    .get(workspace) || null;
-}
-
-function latestConnectorRowForScope(workspace, includeAll) {
+function latestRunnerRowForScope(workspace, includeAll, workspacePrefix, authContext) {
+  const tenantId = tenantIdFromAuth(authContext);
   if (includeAll) {
     return db
-      .prepare(`SELECT * FROM connector_runners ORDER BY updated_at DESC LIMIT 1`)
-      .get() || null;
+      .prepare(`SELECT * FROM runners WHERE workspace LIKE ? AND tenant_id = ? ORDER BY updated_at DESC LIMIT 1`)
+      .get(`${workspacePrefix}%`, tenantId) || null;
+  }
+  return db
+    .prepare(`SELECT * FROM runners WHERE workspace = ? AND tenant_id = ? ORDER BY updated_at DESC LIMIT 1`)
+    .get(workspace, tenantId) || null;
+}
+
+function latestConnectorRowForScope(workspace, includeAll, allWorkspace, workspacePrefix, authContext) {
+  const tenantId = tenantIdFromAuth(authContext);
+  if (includeAll) {
+    return db
+      .prepare(`SELECT * FROM connector_runners WHERE workspace LIKE ? AND tenant_id = ? ORDER BY updated_at DESC LIMIT 1`)
+      .get(`${workspacePrefix}%`, tenantId) || null;
   }
   return db.prepare(`
     SELECT * FROM connector_runners
-    WHERE workspace = ? OR workspace = '*'
+    WHERE tenant_id = ?
+      AND (workspace = ? OR workspace = ?)
     ORDER BY CASE WHEN workspace = ? THEN 0 ELSE 1 END, updated_at DESC
     LIMIT 1
-  `).get(workspace, workspace) || null;
+  `).get(tenantId, workspace, allWorkspace, workspace) || null;
 }
 
 function runtimeRunnerStatus(row) {
@@ -1095,7 +1314,7 @@ function runtimeRunnerStatus(row) {
   const currentTask = row.current_task_json ? decodeJSON(row.current_task_json, null) : null;
   return {
     runner_id: row.runner_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     reported_online: reportedOnline,
     runner_online: online,
     online,
@@ -1118,7 +1337,7 @@ function runtimeConnectorStatus(row) {
   const state = heartbeatStale ? 'stale' : reportedStatus;
   return {
     connector_id: row.connector_id,
-    workspace: row.workspace,
+    workspace: publicWorkspaceName(row.workspace),
     status: state,
     reported_status: reportedStatus,
     connector_online: online,
@@ -1133,9 +1352,11 @@ function runtimeConnectorStatus(row) {
   };
 }
 
-function unifiedStatusForScope(workspace, includeAll) {
-  const runner = runtimeRunnerStatus(latestRunnerRowForScope(workspace, includeAll));
-  const connector = runtimeConnectorStatus(latestConnectorRowForScope(workspace, includeAll));
+function unifiedStatusForScope(workspace, includeAll, allWorkspace, workspacePrefix, authContext) {
+  const runner = runtimeRunnerStatus(latestRunnerRowForScope(workspace, includeAll, workspacePrefix, authContext));
+  const connector = runtimeConnectorStatus(
+    latestConnectorRowForScope(workspace, includeAll, allWorkspace, workspacePrefix, authContext),
+  );
   const runnerOnline = !!runner?.online;
   const connectorOnline = !!connector?.online;
 
@@ -1183,10 +1404,16 @@ function recordApprovalFromEvent(event) {
   const ticket = event.payload?.ticket;
   if (!ticket || !ticket.id || !ticket.task_id) return;
   const ts = nowIso();
+  const rawWorkspace = ticket.workspace || event.workspace;
+  const workspace = String(rawWorkspace || '').includes('::')
+    ? String(rawWorkspace)
+    : String(event.workspace || rawWorkspace || '');
+  const tenantId = ticket.tenant_id || event.tenant_id || tenantIdFromWorkspace(workspace);
+  const safeWorkspace = tenantIdFromWorkspace(workspace) === tenantId ? workspace : event.workspace;
   upsertApprovalStmt.run(
     ticket.id,
     ticket.runner_id || event.runner_id,
-    ticket.workspace || event.workspace,
+    safeWorkspace,
     ticket.task_id,
     ticket.task_text || '',
     JSON.stringify(ticket.risk_reason || []),
@@ -1195,12 +1422,14 @@ function recordApprovalFromEvent(event) {
     ticket.decision_at || null,
     ticket.created_at || event.ts || ts,
     ts,
+    tenantId,
   );
 }
 
 function applyTaskStateEvent(event) {
   const p = event.payload || {};
   if (!p.task_id && !p.status) return;
+  const tenantId = event.tenant_id || tenantIdFromWorkspace(event.workspace);
   upsertTaskStmt.run(
     event.workspace,
     p.task_id || null,
@@ -1208,6 +1437,7 @@ function applyTaskStateEvent(event) {
     p.task_mode || null,
     p.status || null,
     p.updated_at || event.ts || nowIso(),
+    tenantId,
   );
 }
 
@@ -1731,8 +1961,10 @@ function pickNearestWindow(windows, targetMinutes) {
   return null;
 }
 
-function upsertChatThread({ threadId, workspace, title, externalThreadId, source, status, createdAt, updatedAt }) {
+function upsertChatThread({ threadId, workspace, title, externalThreadId, source, status, createdAt, updatedAt, authContext }) {
   const existing = selectChatThreadStmt.get(threadId);
+  const tenantId = authContext ? tenantIdFromAuth(authContext) : tenantIdFromWorkspace(workspace);
+  if (existing && !rowBelongsToTenant(existing, { tenantId })) return null;
   const normalizedTitle = typeof title === 'string' ? title : null;
   const nextTitle = normalizedTitle != null && normalizedTitle.trim()
     ? normalizedTitle
@@ -1751,6 +1983,7 @@ function upsertChatThread({ threadId, workspace, title, externalThreadId, source
       status || 'idle',
       createdAt,
       updatedAt,
+      tenantId,
     );
     return normalizeChatThread(selectChatThreadStmt.get(threadId));
   }
@@ -1762,12 +1995,14 @@ function upsertChatThread({ threadId, workspace, title, externalThreadId, source
     status || existing.status || 'idle',
     updatedAt,
     threadId,
+    tenantId,
   );
   return normalizeChatThread(selectChatThreadStmt.get(threadId));
 }
 
 function appendChatEvent({ threadId, workspace, jobId, turnId, type, delta, payload, ts }) {
-  const seq = nextChatSeqStmt.get(threadId).next_seq;
+  const tenantId = tenantIdFromWorkspace(workspace);
+  const seq = nextChatSeqStmt.get(threadId, tenantId).next_seq;
   insertChatEventStmt.run(
     threadId,
     seq,
@@ -1778,6 +2013,7 @@ function appendChatEvent({ threadId, workspace, jobId, turnId, type, delta, payl
     delta == null ? null : String(delta),
     payload == null ? null : JSON.stringify(payload),
     ts || nowIso(),
+    tenantId,
   );
   return seq;
 }
@@ -1844,10 +2080,11 @@ function decodeExistingTranscriptEvent(row) {
 
 function importThreadMessagesIncremental({ threadId, workspace, messages, ts }) {
   if (!Array.isArray(messages) || messages.length === 0) return 0;
+  const tenantId = tenantIdFromWorkspace(workspace);
 
   const knownSignatures = new Set();
   const latestTsByMessageKey = new Map();
-  const recentEvents = selectRecentTranscriptEventsByThreadStmt.all(threadId);
+  const recentEvents = selectRecentTranscriptEventsByThreadStmt.all(threadId, tenantId);
   for (const row of recentEvents) {
     const decoded = decodeExistingTranscriptEvent(row);
     if (!decoded) continue;
@@ -1908,11 +2145,14 @@ function importThreadMessagesIncremental({ threadId, workspace, messages, ts }) 
   return inserted;
 }
 
-function ensureThreadForMessage({ threadId, workspace }) {
+function ensureThreadForMessage({ threadId, workspace, authContext }) {
   const row = selectChatThreadStmt.get(threadId);
-  if (row) return normalizeChatThread(row);
+  if (row) {
+    if (!rowBelongsToTenant(row, authContext)) return null;
+    return row;
+  }
   const ts = nowIso();
-  return upsertChatThread({
+  const created = upsertChatThread({
     threadId,
     workspace,
     title: '',
@@ -1921,7 +2161,10 @@ function ensureThreadForMessage({ threadId, workspace }) {
     status: 'idle',
     createdAt: ts,
     updatedAt: ts,
+    authContext,
   });
+  if (!created) return null;
+  return selectChatThreadStmt.get(threadId);
 }
 
 function listRolloutFiles(rootDir, source, out) {
@@ -1997,10 +2240,10 @@ function parseRolloutSummary(filePath) {
   return summary;
 }
 
-function runBackfill(workspaceFilter, maxFiles) {
+function runBackfill(workspaceFilter, maxFiles, authContext) {
   const normalizedWorkspaceFilter = isAllWorkspaces(workspaceFilter)
     ? null
-    : workspaceFrom(workspaceFilter);
+    : workspaceFrom(workspaceFilter, authContext);
   const files = [];
   listRolloutFiles(SESSIONS_DIR, 'sessions', files);
   listRolloutFiles(ARCHIVED_SESSIONS_DIR, 'archived', files);
@@ -2021,13 +2264,15 @@ function runBackfill(workspaceFilter, maxFiles) {
     } catch {
       continue;
     }
-    const inferredWorkspace = summary.cwd ? path.basename(summary.cwd) : normalizedWorkspaceFilter || DEFAULT_WORKSPACE;
+    const inferredWorkspace = summary.cwd
+      ? workspaceFrom(path.basename(summary.cwd), authContext)
+      : normalizedWorkspaceFilter || workspaceFrom(DEFAULT_WORKSPACE, authContext);
     if (normalizedWorkspaceFilter && inferredWorkspace !== normalizedWorkspaceFilter) continue;
 
     const threadId = summary.threadId || `rollout_${hashText(item.path).slice(0, 20)}`;
     const title = summary.title || `Session ${threadId.slice(0, 12)}`;
 
-    upsertChatThread({
+    const thread = upsertChatThread({
       threadId,
       workspace: inferredWorkspace,
       title,
@@ -2036,28 +2281,33 @@ function runBackfill(workspaceFilter, maxFiles) {
       status: 'idle',
       createdAt: summary.createdAt || nowIso(),
       updatedAt: summary.updatedAt || nowIso(),
+      authContext,
     });
-    imported += 1;
+    if (thread) imported += 1;
   }
 
   return { scanned, imported };
 }
 
-function collectKnownWorkspaces() {
+function collectKnownWorkspaces(authContext) {
+  const workspacePrefix = tenantWorkspacePrefix(authContext);
+  const tenantId = tenantIdFromAuth(authContext);
   const seen = new Map();
   const addRows = (rows, source) => {
     for (const row of rows) {
       const name = String(row.workspace || '').trim();
-      if (!name || name === '*') continue;
-      if (!seen.has(name)) seen.set(name, source);
+      if (!name || !name.startsWith(workspacePrefix)) continue;
+      const visible = publicWorkspaceName(name);
+      if (!visible || visible === '*') continue;
+      if (!seen.has(visible)) seen.set(visible, source);
     }
   };
 
-  addRows(db.prepare(`SELECT DISTINCT workspace FROM chat_threads`).all(), 'threads');
-  addRows(db.prepare(`SELECT DISTINCT workspace FROM chat_jobs`).all(), 'jobs');
-  addRows(db.prepare(`SELECT DISTINCT workspace FROM connector_runners`).all(), 'connectors');
-  addRows(db.prepare(`SELECT DISTINCT workspace FROM runners`).all(), 'runners');
-  addRows(db.prepare(`SELECT DISTINCT workspace FROM tasks_current`).all(), 'tasks');
+  addRows(db.prepare(`SELECT DISTINCT workspace FROM chat_threads WHERE tenant_id = ?`).all(tenantId), 'threads');
+  addRows(db.prepare(`SELECT DISTINCT workspace FROM chat_jobs WHERE tenant_id = ?`).all(tenantId), 'jobs');
+  addRows(db.prepare(`SELECT DISTINCT workspace FROM connector_runners WHERE tenant_id = ?`).all(tenantId), 'connectors');
+  addRows(db.prepare(`SELECT DISTINCT workspace FROM runners WHERE tenant_id = ?`).all(tenantId), 'runners');
+  addRows(db.prepare(`SELECT DISTINCT workspace FROM tasks_current WHERE tenant_id = ?`).all(tenantId), 'tasks');
 
   if (!seen.size && DEFAULT_WORKSPACE) {
     seen.set(DEFAULT_WORKSPACE, 'default');
@@ -2077,10 +2327,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (!isAuthorized(req)) {
+  const authContext = authContextFromRequest(req);
+  if (!authContext) {
     unauthorized(res);
     return;
   }
+  const tenantId = tenantIdFromAuth(authContext);
 
   try {
     if (url.pathname === CONTROL_PLANE_API_PREFIX || url.pathname.startsWith(`${CONTROL_PLANE_API_PREFIX}/`)) {
@@ -2091,9 +2343,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/legacy-runner/heartbeat') {
       const body = await parseBody(req);
       const ts = nowIso();
+      const workspace = workspaceFrom(body.workspace, authContext);
       upsertRunnerStmt.run(
         body.runner_id,
-        body.workspace,
+        tenantId,
+        workspace,
         body.online ? 1 : 0,
         body.current_task ? JSON.stringify(body.current_task) : null,
         body.last_success_at || null,
@@ -2103,12 +2357,13 @@ const server = http.createServer(async (req, res) => {
 
       if (body.current_task) {
         upsertTaskStmt.run(
-          body.workspace,
+          workspace,
           body.current_task.id || null,
           body.current_task.text || null,
           body.current_task.mode || null,
           body.current_task.status || null,
           body.updated_at || ts,
+          tenantId,
         );
       }
 
@@ -2123,10 +2378,12 @@ const server = http.createServer(async (req, res) => {
       db.exec('BEGIN');
       try {
         for (const event of events) {
+          const workspace = workspaceFrom(event.workspace || body.workspace, authContext);
           const normalized = {
             id: event.id || `evt_${Math.random().toString(16).slice(2)}`,
             runner_id: event.runner_id || body.runner_id,
-            workspace: event.workspace || body.workspace,
+            workspace,
+            tenant_id: tenantId,
             task_id: event.task_id || null,
             level: event.level || 'info',
             phase: event.phase || 'unknown',
@@ -2145,6 +2402,7 @@ const server = http.createServer(async (req, res) => {
             normalized.message,
             normalized.payload ? JSON.stringify(normalized.payload) : null,
             normalized.ts,
+            normalized.tenant_id,
           );
 
           if (normalized.phase === 'approval.created') recordApprovalFromEvent(normalized);
@@ -2161,23 +2419,23 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/legacy-runner/status') {
-      const workspace = workspaceFrom(url.searchParams.get('workspace'));
-      json(res, 200, { ok: true, status: statusForWorkspace(workspace), ts: nowIso() });
+      const workspace = workspaceFrom(url.searchParams.get('workspace'), authContext);
+      json(res, 200, { ok: true, status: statusForWorkspace(workspace, authContext), ts: nowIso() });
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/legacy-runner/approvals') {
-      const workspace = workspaceFrom(url.searchParams.get('workspace'));
+      const workspace = workspaceFrom(url.searchParams.get('workspace'), authContext);
       const state = (url.searchParams.get('state') || 'pending').toLowerCase();
       let rows;
       if (state === 'all') {
         rows = db
-          .prepare(`SELECT * FROM approvals WHERE workspace = ? ORDER BY updated_at DESC LIMIT 200`)
-          .all(workspace);
+          .prepare(`SELECT * FROM approvals WHERE workspace = ? AND tenant_id = ? ORDER BY updated_at DESC LIMIT 200`)
+          .all(workspace, tenantId);
       } else {
         rows = db
-          .prepare(`SELECT * FROM approvals WHERE workspace = ? AND state = ? ORDER BY updated_at DESC LIMIT 200`)
-          .all(workspace, state);
+          .prepare(`SELECT * FROM approvals WHERE workspace = ? AND state = ? AND tenant_id = ? ORDER BY updated_at DESC LIMIT 200`)
+          .all(workspace, state, tenantId);
       }
       json(res, 200, { ok: true, approvals: rows.map(normalizeApproval), ts: nowIso() });
       return;
@@ -2193,34 +2451,34 @@ const server = http.createServer(async (req, res) => {
       }
       const ts = nowIso();
       const result = db
-        .prepare(`UPDATE approvals SET state = ?, decision_by = ?, decision_at = ?, updated_at = ? WHERE id = ?`)
-        .run(decision, body.decision_by || 'ios-user', ts, ts, id);
+        .prepare(`UPDATE approvals SET state = ?, decision_by = ?, decision_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`)
+        .run(decision, body.decision_by || 'ios-user', ts, ts, id, tenantId);
       if (!result.changes) {
         json(res, 404, { ok: false, error: 'approval not found' });
         return;
       }
-      const row = db.prepare(`SELECT * FROM approvals WHERE id = ?`).get(id);
+      const row = db.prepare(`SELECT * FROM approvals WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
       json(res, 200, { ok: true, approval: normalizeApproval(row), ts });
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/legacy-runner/tasks/current') {
-      const workspace = workspaceFrom(url.searchParams.get('workspace'));
-      const row = db.prepare(`SELECT * FROM tasks_current WHERE workspace = ?`).get(workspace);
+      const workspace = workspaceFrom(url.searchParams.get('workspace'), authContext);
+      const row = db.prepare(`SELECT * FROM tasks_current WHERE workspace = ? AND tenant_id = ?`).get(workspace, tenantId);
       json(res, 200, { ok: true, task: row || null, ts: nowIso() });
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/legacy-runner/events') {
-      const workspace = workspaceFrom(url.searchParams.get('workspace'));
+      const workspace = workspaceFrom(url.searchParams.get('workspace'), authContext);
       const limit = clampInt(url.searchParams.get('limit'), 1, 500, 100);
       const rows = db
-        .prepare(`SELECT * FROM events WHERE workspace = ? ORDER BY ts DESC LIMIT ?`)
-        .all(workspace, limit)
+        .prepare(`SELECT * FROM events WHERE workspace = ? AND tenant_id = ? ORDER BY ts DESC LIMIT ?`)
+        .all(workspace, tenantId, limit)
         .map((row) => ({
           id: row.id,
           runner_id: row.runner_id,
-          workspace: row.workspace,
+          workspace: publicWorkspaceName(row.workspace),
           task_id: row.task_id,
           level: row.level,
           phase: row.phase,
@@ -2234,7 +2492,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/chat/threads') {
       const body = await parseBody(req);
-      const workspace = workspaceFrom(body.workspace);
+      const workspace = workspaceFrom(body.workspace, authContext);
       const threadId = String(body.thread_id || randomId('thr_local'));
       const title = typeof body.title === 'string' ? body.title.slice(0, 200) : '';
       const source = typeof body.source === 'string' && body.source ? body.source : 'ios';
@@ -2251,7 +2509,12 @@ const server = http.createServer(async (req, res) => {
         status,
         createdAt,
         updatedAt,
+        authContext,
       });
+      if (!thread) {
+        json(res, 409, { ok: false, error: 'thread_id_in_use_by_other_tenant' });
+        return;
+      }
       json(res, 200, { ok: true, thread, ts });
       return;
     }
@@ -2259,11 +2522,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/codex-iphone-connector/chat/threads') {
       const workspaceParam = url.searchParams.get('workspace');
       const includeAll = isAllWorkspaces(workspaceParam);
-      const workspace = workspaceFrom(workspaceParam);
+      const workspace = workspaceFrom(workspaceParam, authContext);
       const limit = clampInt(url.searchParams.get('limit'), 1, 100, 30);
       const includeDeleted = parseBoolQuery(url.searchParams.get('include_deleted'));
       const includeArchived = parseBoolQuery(url.searchParams.get('include_archived'));
       const visibility = threadVisibilityClause(includeDeleted, includeArchived);
+      const workspacePrefix = tenantWorkspacePrefix(authContext);
       const cursor = decodeCursor(url.searchParams.get('cursor'));
       let rows;
       if (cursor) {
@@ -2271,44 +2535,50 @@ const server = http.createServer(async (req, res) => {
           rows = db
             .prepare(`
               SELECT * FROM chat_threads
-              WHERE (${visibility})
-                AND (updated_at < ? OR (updated_at = ? AND thread_id < ?))
-              ORDER BY updated_at DESC, thread_id DESC
-              LIMIT ?
-            `)
-            .all(cursor.updated_at, cursor.updated_at, cursor.thread_id, limit + 1);
-        } else {
-          rows = db
-            .prepare(`
-              SELECT * FROM chat_threads
-              WHERE workspace = ?
+              WHERE workspace LIKE ?
+                AND tenant_id = ?
                 AND (${visibility})
                 AND (updated_at < ? OR (updated_at = ? AND thread_id < ?))
               ORDER BY updated_at DESC, thread_id DESC
               LIMIT ?
             `)
-            .all(workspace, cursor.updated_at, cursor.updated_at, cursor.thread_id, limit + 1);
+            .all(`${workspacePrefix}%`, tenantId, cursor.updated_at, cursor.updated_at, cursor.thread_id, limit + 1);
+        } else {
+          rows = db
+            .prepare(`
+              SELECT * FROM chat_threads
+              WHERE workspace = ?
+                AND tenant_id = ?
+                AND (${visibility})
+                AND (updated_at < ? OR (updated_at = ? AND thread_id < ?))
+              ORDER BY updated_at DESC, thread_id DESC
+              LIMIT ?
+            `)
+            .all(workspace, tenantId, cursor.updated_at, cursor.updated_at, cursor.thread_id, limit + 1);
         }
       } else {
         if (includeAll) {
           rows = db
             .prepare(`
               SELECT * FROM chat_threads
-              WHERE ${visibility}
+              WHERE workspace LIKE ?
+                AND tenant_id = ?
+                AND ${visibility}
               ORDER BY updated_at DESC, thread_id DESC
               LIMIT ?
             `)
-            .all(limit + 1);
+            .all(`${workspacePrefix}%`, tenantId, limit + 1);
         } else {
           rows = db
             .prepare(`
               SELECT * FROM chat_threads
               WHERE workspace = ?
+                AND tenant_id = ?
                 AND ${visibility}
               ORDER BY updated_at DESC, thread_id DESC
               LIMIT ?
             `)
-            .all(workspace, limit + 1);
+            .all(workspace, tenantId, limit + 1);
         }
       }
       const hasNext = rows.length > limit;
@@ -2325,23 +2595,23 @@ const server = http.createServer(async (req, res) => {
       const threadId = decodeURIComponent(threadDeleteMatch[1]);
       const body = await parseBody(req);
       const row = selectChatThreadStmt.get(threadId);
-      if (!row) {
+      if (!row || !rowBelongsToTenant(row, authContext)) {
         json(res, 404, { ok: false, error: 'thread_not_found' });
         return;
       }
 
-      const thread = normalizeChatThread(row);
+      const thread = row;
       const ts = nowIso();
       const requestedBy = String(body.requested_by || 'ios-delete-thread').slice(0, 120);
       let request = null;
 
       if (thread.external_thread_id || thread.source === 'codex') {
-        updateThreadStatusStmt.run('deleting', ts, threadId);
+        updateThreadStatusStmt.run('deleting', ts, threadId, tenantId);
         const requestId = randomId('sync_req');
-        insertSessionSyncRequestStmt.run(requestId, thread.workspace, threadId, requestedBy, ts);
-        request = selectSessionSyncRequestStmt.get(requestId);
+        insertSessionSyncRequestStmt.run(requestId, thread.workspace, threadId, requestedBy, ts, tenantId);
+        request = selectSessionSyncRequestStmt.get(requestId, tenantId);
       } else {
-        updateThreadStatusStmt.run('deleted', ts, threadId);
+        updateThreadStatusStmt.run('deleted', ts, threadId, tenantId);
       }
 
       const updatedThread = normalizeChatThread(selectChatThreadStmt.get(threadId));
@@ -2359,11 +2629,11 @@ const server = http.createServer(async (req, res) => {
       const threadId = decodeURIComponent(threadInterruptMatch[1]);
       const body = await parseBody(req);
       const row = selectChatThreadStmt.get(threadId);
-      if (!row) {
+      if (!row || !rowBelongsToTenant(row, authContext)) {
         json(res, 404, { ok: false, error: 'thread_not_found' });
         return;
       }
-      const thread = normalizeChatThread(row);
+      const thread = row;
       const requestedBy = String(body.requested_by || 'ios-stop-thread').slice(0, 120);
       const ts = nowIso();
       const stopMessage = 'Stopped by user from iPhone.';
@@ -2373,12 +2643,12 @@ const server = http.createServer(async (req, res) => {
 
       db.exec('BEGIN');
       try {
-        const activeJob = selectLatestActiveChatJobByThreadStmt.get(threadId);
+        const activeJob = selectLatestActiveChatJobByThreadStmt.get(threadId, tenantId);
         if (activeJob) {
           const status = String(activeJob.status || '').toLowerCase();
           if (status === 'queued') {
-            interruptChatJobStmt.run(activeJob.turn_id || null, 'TURN_INTERRUPTED', stopMessage, ts, activeJob.job_id);
-            updateThreadStatusStmt.run('interrupted', ts, threadId);
+            interruptChatJobStmt.run(activeJob.turn_id || null, 'TURN_INTERRUPTED', stopMessage, ts, activeJob.job_id, tenantId);
+            updateThreadStatusStmt.run('interrupted', ts, threadId, tenantId);
             appendChatEvent({
               threadId,
               workspace: thread.workspace,
@@ -2396,7 +2666,7 @@ const server = http.createServer(async (req, res) => {
             requested = true;
             mode = 'interrupted';
           } else if (status === 'claimed' || status === 'running') {
-            const changed = requestChatJobStopStmt.run(ts, requestedBy, ts, activeJob.job_id);
+            const changed = requestChatJobStopStmt.run(ts, requestedBy, ts, activeJob.job_id, tenantId);
             if (changed.changes === 1) {
               appendChatEvent({
                 threadId,
@@ -2416,7 +2686,7 @@ const server = http.createServer(async (req, res) => {
           }
           updatedJob = selectChatJobStmt.get(activeJob.job_id);
         } else if (['queued', 'claimed', 'running'].includes(String(thread.status || '').toLowerCase())) {
-          updateThreadStatusStmt.run('interrupted', ts, threadId);
+          updateThreadStatusStmt.run('interrupted', ts, threadId, tenantId);
           appendChatEvent({
             threadId,
             workspace: thread.workspace,
@@ -2462,13 +2732,21 @@ const server = http.createServer(async (req, res) => {
         badRequest(res, 'input_text or input_items is required');
         return;
       }
-      const workspace = workspaceFrom(body.workspace);
-      const thread = ensureThreadForMessage({ threadId, workspace });
+      const workspace = workspaceFrom(body.workspace, authContext);
+      const thread = ensureThreadForMessage({ threadId, workspace, authContext });
+      if (!thread) {
+        forbidden(res, 'thread_tenant_mismatch');
+        return;
+      }
       const idempotencyKey = String(body.idempotency_key || randomId('msg'));
       const policy = normalizeChatPolicy(body.policy);
       const replaceRunning = body.replace_running !== false;
-      const existing = selectChatJobByIdempotencyStmt.get(idempotencyKey);
+      const existing = selectChatJobByIdempotencyStmt.get(idempotencyKey, tenantId);
       if (existing) {
+        if (!rowBelongsToTenant(existing, authContext)) {
+          forbidden(res, 'job_tenant_mismatch');
+          return;
+        }
         if (existing.thread_id !== threadId) {
           json(res, 409, { ok: false, error: 'idempotency_key already used on another thread' });
           return;
@@ -2488,7 +2766,7 @@ const server = http.createServer(async (req, res) => {
       const supersededMessage = 'Superseded by a newer iPhone message.';
       db.exec('BEGIN');
       try {
-        const staleQueued = selectQueuedChatJobsByThreadStmt.all(threadId);
+        const staleQueued = selectQueuedChatJobsByThreadStmt.all(threadId, tenantId);
         for (const queued of staleQueued) {
           interruptChatJobStmt.run(
             queued.turn_id || null,
@@ -2496,6 +2774,7 @@ const server = http.createServer(async (req, res) => {
             supersededMessage,
             ts,
             queued.job_id,
+            tenantId,
           );
           appendChatEvent({
             threadId,
@@ -2513,11 +2792,11 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        const activeBefore = selectLatestActiveChatJobByThreadStmt.get(threadId);
+        const activeBefore = selectLatestActiveChatJobByThreadStmt.get(threadId, tenantId);
         const activeStatus = String(activeBefore?.status || '').toLowerCase();
         const hasRunningBefore = activeStatus === 'claimed' || activeStatus === 'running';
         if (replaceRunning && hasRunningBefore && activeBefore?.job_id) {
-          const changed = requestChatJobStopStmt.run(ts, 'ios-new-message', ts, activeBefore.job_id);
+          const changed = requestChatJobStopStmt.run(ts, 'ios-new-message', ts, activeBefore.job_id, tenantId);
           if (changed.changes === 1) {
             appendChatEvent({
               threadId,
@@ -2551,9 +2830,10 @@ const server = http.createServer(async (req, res) => {
           null,
           ts,
           ts,
+          tenantId,
         );
 
-        updateThreadStatusStmt.run(hasRunningBefore ? 'running' : 'queued', ts, threadId);
+        updateThreadStatusStmt.run(hasRunningBefore ? 'running' : 'queued', ts, threadId, tenantId);
         appendChatEvent({
           threadId,
           workspace: thread.workspace,
@@ -2602,17 +2882,22 @@ const server = http.createServer(async (req, res) => {
     const threadEventsMatch = url.pathname.match(/^\/codex-iphone-connector\/chat\/threads\/([^/]+)\/events$/);
     if (req.method === 'GET' && threadEventsMatch) {
       const threadId = decodeURIComponent(threadEventsMatch[1]);
+      const threadRow = selectChatThreadStmt.get(threadId);
+      if (!threadRow || !rowBelongsToTenant(threadRow, authContext)) {
+        json(res, 404, { ok: false, error: 'thread_not_found' });
+        return;
+      }
       const afterSeq = clampInt(url.searchParams.get('after_seq'), 0, 10_000_000, 0);
       const limit = clampInt(url.searchParams.get('limit'), 1, 1000, 200);
       const tail = parseBoolQuery(url.searchParams.get('tail')) && afterSeq === 0;
       const rows = tail
         ? db.prepare(`
             SELECT * FROM chat_events
-            WHERE thread_id = ?
+            WHERE thread_id = ? AND tenant_id = ?
             ORDER BY seq DESC
             LIMIT ?
-          `).all(threadId, limit)
-        : selectChatEventsStmt.all(threadId, afterSeq, limit);
+          `).all(threadId, tenantId, limit)
+        : selectChatEventsStmt.all(threadId, afterSeq, tenantId, limit);
       const normalizedRows = tail ? rows.slice().reverse() : rows;
       const events = normalizedRows.map(normalizeChatEvent);
       const lastSeq = events.length ? events[events.length - 1].seq : afterSeq;
@@ -2624,17 +2909,23 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && threadDetailMatch) {
       const threadId = decodeURIComponent(threadDetailMatch[1]);
       const row = selectChatThreadStmt.get(threadId);
-      if (!row) {
+      if (!row || !rowBelongsToTenant(row, authContext)) {
         json(res, 404, { ok: false, error: 'thread_not_found' });
         return;
       }
-      const jobs = selectChatJobsByThreadStmt.all(threadId).map(normalizeChatJob);
-      const userInputRequestRow = selectLatestPendingChatUserInputRequestByThreadStmt.get(threadId);
+      const jobs = selectChatJobsByThreadStmt
+        .all(threadId, tenantId)
+        .filter((job) => rowBelongsToTenant(job, authContext))
+        .map(normalizeChatJob);
+      const userInputRequestRow = selectLatestPendingChatUserInputRequestByThreadStmt.get(threadId, tenantId);
+      const safeUserInputRequest = userInputRequestRow && rowBelongsToTenant(userInputRequestRow, authContext)
+        ? userInputRequestRow
+        : null;
       json(res, 200, {
         ok: true,
         thread: normalizeChatThread(row),
         jobs,
-        user_input_request: userInputRequestRow ? normalizeChatUserInputRequest(userInputRequestRow) : null,
+        user_input_request: safeUserInputRequest ? normalizeChatUserInputRequest(safeUserInputRequest) : null,
         ts: nowIso(),
       });
       return;
@@ -2642,6 +2933,10 @@ const server = http.createServer(async (req, res) => {
 
     const jobUserInputRequestMatch = url.pathname.match(/^\/codex-iphone-connector\/jobs\/([^/]+)\/user-input\/request$/);
     if (req.method === 'POST' && jobUserInputRequestMatch) {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const jobId = decodeURIComponent(jobUserInputRequestMatch[1]);
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
@@ -2652,7 +2947,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const job = selectChatJobStmt.get(jobId);
-      if (!job) {
+      if (!job || !rowBelongsToTenant(job, authContext)) {
         json(res, 404, { ok: false, error: 'job_not_found' });
         return;
       }
@@ -2676,7 +2971,7 @@ const server = http.createServer(async (req, res) => {
       const itemId = body.item_id == null ? null : String(body.item_id || '').trim().slice(0, 160) || null;
 
       const ts = nowIso();
-      let row = selectChatUserInputRequestByJobStmt.get(requestId, jobId);
+      let row = selectChatUserInputRequestByJobStmt.get(requestId, jobId, tenantId);
       if (!row) {
         db.exec('BEGIN');
         try {
@@ -2691,8 +2986,9 @@ const server = http.createServer(async (req, res) => {
             JSON.stringify(normalizedQuestions),
             ts,
             ts,
+            tenantId,
           );
-          updateThreadStatusStmt.run('waiting_on_user_input', ts, threadId);
+          updateThreadStatusStmt.run('waiting_on_user_input', ts, threadId, tenantId);
           appendChatEvent({
             threadId,
             workspace: job.workspace,
@@ -2712,15 +3008,23 @@ const server = http.createServer(async (req, res) => {
           try { db.exec('ROLLBACK'); } catch {}
           throw err;
         }
-        row = selectChatUserInputRequestByJobStmt.get(requestId, jobId);
+        row = selectChatUserInputRequestByJobStmt.get(requestId, jobId, tenantId);
       }
 
+      if (!rowBelongsToTenant(row, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
+        return;
+      }
       json(res, 200, { ok: true, request: normalizeChatUserInputRequest(row), ts: nowIso() });
       return;
     }
 
     const jobUserInputClaimMatch = url.pathname.match(/^\/codex-iphone-connector\/jobs\/([^/]+)\/user-input\/claim$/);
     if (req.method === 'POST' && jobUserInputClaimMatch) {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const jobId = decodeURIComponent(jobUserInputClaimMatch[1]);
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
@@ -2731,7 +3035,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const job = selectChatJobStmt.get(jobId);
-      if (!job) {
+      if (!job || !rowBelongsToTenant(job, authContext)) {
         json(res, 404, { ok: false, error: 'job_not_found' });
         return;
       }
@@ -2740,9 +3044,13 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      let row = selectChatUserInputRequestByJobStmt.get(requestId, jobId);
+      let row = selectChatUserInputRequestByJobStmt.get(requestId, jobId, tenantId);
       if (!row) {
         json(res, 200, { ok: true, request: null, ts: nowIso() });
+        return;
+      }
+      if (!rowBelongsToTenant(row, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
         return;
       }
       if (row.connector_id && row.connector_id !== connectorId) {
@@ -2754,10 +3062,10 @@ const server = http.createServer(async (req, res) => {
         const ts = nowIso();
         db.exec('BEGIN');
         try {
-          const changed = markChatUserInputRequestCompletedStmt.run(ts, ts, requestId, jobId, connectorId);
+          const changed = markChatUserInputRequestCompletedStmt.run(ts, ts, requestId, jobId, connectorId, tenantId);
           if (changed.changes === 1) {
-            updateThreadStatusStmt.run('running', ts, job.thread_id);
-            row = selectChatUserInputRequestByJobStmt.get(requestId, jobId);
+            updateThreadStatusStmt.run('running', ts, job.thread_id, tenantId);
+            row = selectChatUserInputRequestByJobStmt.get(requestId, jobId, tenantId);
           }
           db.exec('COMMIT');
         } catch (err) {
@@ -2775,7 +3083,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const threadUserInputRespondMatch = url.pathname.match(/^\/codex-iphone-connector\/chat\/threads\/([^/]+)\/user-input\/respond$/);
-    if (req.method === 'POST' && threadUserInputRespondMatch) {
+      if (req.method === 'POST' && threadUserInputRespondMatch) {
       const threadId = decodeURIComponent(threadUserInputRespondMatch[1]);
       const body = await parseBody(req);
       const requestId = String(body.request_id || '').trim();
@@ -2785,14 +3093,18 @@ const server = http.createServer(async (req, res) => {
       }
 
       const thread = selectChatThreadStmt.get(threadId);
-      if (!thread) {
+      if (!thread || !rowBelongsToTenant(thread, authContext)) {
         json(res, 404, { ok: false, error: 'thread_not_found' });
         return;
       }
 
-      let row = selectChatUserInputRequestStmt.get(requestId);
+      let row = selectChatUserInputRequestStmt.get(requestId, tenantId);
       if (!row) {
         json(res, 404, { ok: false, error: 'user_input_request_not_found' });
+        return;
+      }
+      if (!rowBelongsToTenant(row, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
         return;
       }
       if (row.thread_id !== threadId) {
@@ -2822,11 +3134,12 @@ const server = http.createServer(async (req, res) => {
             ts,
             requestId,
             threadId,
+            tenantId,
           );
           if (changed.changes !== 1) {
             throw new Error('request_not_pending');
           }
-          updateThreadStatusStmt.run('running', ts, threadId);
+          updateThreadStatusStmt.run('running', ts, threadId, tenantId);
           appendChatEvent({
             threadId,
             workspace: row.workspace,
@@ -2845,7 +3158,7 @@ const server = http.createServer(async (req, res) => {
           try { db.exec('ROLLBACK'); } catch {}
           throw err;
         }
-        row = selectChatUserInputRequestStmt.get(requestId);
+        row = selectChatUserInputRequestStmt.get(requestId, tenantId);
       } else if (row.status === 'answered' || row.status === 'completed') {
         // idempotent return
       } else {
@@ -2858,13 +3171,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/register') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       if (!connectorId) {
         badRequest(res, 'connector_id is required');
         return;
       }
-      const workspace = workspaceFrom(body.workspace);
+      const workspace = workspaceFrom(body.workspace, authContext, { allowAll: true });
       const ts = nowIso();
       upsertConnectorStmt.run(
         connectorId,
@@ -2877,20 +3194,25 @@ const server = http.createServer(async (req, res) => {
         ts,
         ts,
         ts,
+        tenantId,
       );
-      const connector = selectConnectorStmt.get(connectorId);
+      const connector = selectConnectorStmt.get(connectorId, tenantId);
       json(res, 200, { ok: true, connector: normalizeConnector(connector), poll_seconds: CONNECTOR_POLL_SECONDS, ts });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/heartbeat') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       if (!connectorId) {
         badRequest(res, 'connector_id is required');
         return;
       }
-      const workspace = workspaceFrom(body.workspace);
+      const workspace = workspaceFrom(body.workspace, authContext, { allowAll: true });
       const ts = nowIso();
       upsertConnectorStmt.run(
         connectorId,
@@ -2903,6 +3225,7 @@ const server = http.createServer(async (req, res) => {
         ts,
         ts,
         ts,
+        tenantId,
       );
       json(res, 200, { ok: true, ts });
       return;
@@ -2910,18 +3233,28 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/sessions/sync/request') {
       const body = await parseBody(req);
-      const workspace = isAllWorkspaces(body.workspace) ? '*' : workspaceFrom(body.workspace);
+      const workspace = isAllWorkspaces(body.workspace)
+        ? allWorkspaceForTenant(authContext)
+        : workspaceFrom(body.workspace, authContext);
       const requestId = randomId('sync_req');
       const ts = nowIso();
       const threadId = typeof body.thread_id === 'string' && body.thread_id ? body.thread_id : null;
       const requestedBy = typeof body.requested_by === 'string' && body.requested_by ? body.requested_by : 'ios';
-      insertSessionSyncRequestStmt.run(requestId, workspace, threadId, requestedBy, ts);
-      const row = selectSessionSyncRequestStmt.get(requestId);
+      insertSessionSyncRequestStmt.run(requestId, workspace, threadId, requestedBy, ts, tenantId);
+      const row = selectSessionSyncRequestStmt.get(requestId, tenantId);
+      if (!rowBelongsToTenant(row, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
+        return;
+      }
       json(res, 200, { ok: true, request: normalizeSessionSyncRequest(row), ts });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/sessions/sync/claim') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       if (!connectorId) {
@@ -2929,19 +3262,21 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const claimAll = isAllWorkspaces(body.workspace);
-      const workspace = workspaceFrom(body.workspace);
+      const workspace = workspaceFrom(body.workspace, authContext);
+      const allWorkspace = allWorkspaceForTenant(authContext);
+      const workspacePrefix = tenantWorkspacePrefix(authContext);
       const ts = nowIso();
 
       let claimed = null;
       db.exec('BEGIN IMMEDIATE');
       try {
         const pending = claimAll
-          ? selectPendingAnySessionSyncStmt.get()
-          : selectPendingSessionSyncForWorkspaceStmt.get(workspace);
+          ? selectPendingAnySessionSyncStmt.get(tenantId, `${workspacePrefix}%`)
+          : selectPendingSessionSyncForWorkspaceStmt.get(tenantId, workspace, allWorkspace);
         if (pending) {
-          const result = claimSessionSyncRequestStmt.run(connectorId, ts, pending.request_id);
+          const result = claimSessionSyncRequestStmt.run(connectorId, ts, pending.request_id, tenantId);
           if (result.changes === 1) {
-            claimed = selectSessionSyncRequestStmt.get(pending.request_id);
+            claimed = selectSessionSyncRequestStmt.get(pending.request_id, tenantId);
           }
         }
         db.exec('COMMIT');
@@ -2952,13 +3287,17 @@ const server = http.createServer(async (req, res) => {
 
       json(res, 200, {
         ok: true,
-        request: claimed ? normalizeSessionSyncRequest(claimed) : null,
+        request: claimed && rowBelongsToTenant(claimed, authContext) ? normalizeSessionSyncRequest(claimed) : null,
         ts,
       });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/sessions/sync/complete') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       const requestId = String(body.request_id || '').trim();
@@ -2973,22 +3312,30 @@ const server = http.createServer(async (req, res) => {
       }
       const error = status === 'failed' ? String(body.error || 'sync failed') : null;
       const ts = nowIso();
-      const result = completeSessionSyncRequestStmt.run(status, ts, error, requestId, connectorId);
+      const result = completeSessionSyncRequestStmt.run(status, ts, error, requestId, connectorId, tenantId);
       if (result.changes !== 1) {
         json(res, 409, { ok: false, error: 'request_not_claimed_by_connector' });
         return;
       }
-      const row = selectSessionSyncRequestStmt.get(requestId);
+      const row = selectSessionSyncRequestStmt.get(requestId, tenantId);
+      if (!row || !rowBelongsToTenant(row, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
+        return;
+      }
       const requestedBy = String(row?.requested_by || '').toLowerCase();
       const isDeleteRequest = requestedBy.startsWith('ios-delete-thread') || requestedBy.startsWith('mobile-delete-thread');
       if (isDeleteRequest && row?.thread_id) {
-        updateThreadStatusStmt.run(status === 'completed' ? 'deleted' : 'idle', ts, row.thread_id);
+        updateThreadStatusStmt.run(status === 'completed' ? 'deleted' : 'idle', ts, row.thread_id, tenantId);
       }
       json(res, 200, { ok: true, request: normalizeSessionSyncRequest(row), ts });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/sessions/sync') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       if (!connectorId) {
@@ -3004,7 +3351,9 @@ const server = http.createServer(async (req, res) => {
         : [];
       const snapshotComplete = body.snapshot_complete !== false;
       const pruneMissing = body.prune_missing === true;
-      const syncWorkspaceScope = isAllWorkspaces(body.workspace) ? '*' : workspaceFrom(body.workspace);
+      const syncWorkspaceScope = isAllWorkspaces(body.workspace)
+        ? allWorkspaceForTenant(authContext)
+        : workspaceFrom(body.workspace, authContext);
       const ts = nowIso();
       const importMessages = body.import_messages_if_empty !== false;
       let upserted = 0;
@@ -3024,7 +3373,7 @@ const server = http.createServer(async (req, res) => {
             skipped += 1;
             continue;
           }
-          const workspace = workspaceFrom(raw.workspace || body.workspace);
+          const workspace = workspaceFrom(raw.workspace || body.workspace, authContext);
           const title = typeof raw.title === 'string' ? raw.title.slice(0, 200) : '';
           const externalThreadId = raw.external_thread_id == null
             ? null
@@ -3033,12 +3382,15 @@ const server = http.createServer(async (req, res) => {
           let source = typeof raw.source === 'string' && raw.source ? raw.source : 'codex';
           if (externalThreadId) {
             source = 'codex';
-            const existingByExternal = selectChatThreadByExternalPreferLocalStmt.get(externalThreadId);
+            const existingByExternalRaw = selectChatThreadByExternalPreferLocalStmt.get(externalThreadId, tenantId);
+            const existingByExternal = rowBelongsToTenant(existingByExternalRaw, authContext)
+              ? existingByExternalRaw
+              : null;
             if (existingByExternal && existingByExternal.thread_id !== incomingThreadId) {
               threadId = existingByExternal.thread_id;
               const incomingRow = selectChatThreadStmt.get(incomingThreadId);
-              if (incomingRow) {
-                markThreadDeletedStmt.run(ts, incomingThreadId);
+              if (incomingRow && rowBelongsToTenant(incomingRow, authContext)) {
+                markThreadDeletedStmt.run(ts, incomingThreadId, tenantId);
               }
             }
           }
@@ -3049,7 +3401,7 @@ const server = http.createServer(async (req, res) => {
           const createdAt = normalizeTimestamp(raw.created_at, ts);
           const updatedAt = normalizeTimestamp(raw.updated_at, createdAt);
 
-          upsertChatThread({
+          const syncedThread = upsertChatThread({
             threadId,
             workspace,
             title,
@@ -3058,7 +3410,12 @@ const server = http.createServer(async (req, res) => {
             status,
             createdAt,
             updatedAt,
+            authContext,
           });
+          if (!syncedThread) {
+            skipped += 1;
+            continue;
+          }
           upserted += 1;
 
           if (importMessages) {
@@ -3080,36 +3437,47 @@ const server = http.createServer(async (req, res) => {
             if (!normalizedThreadId.startsWith('codex_')) continue;
             const externalThreadId = normalizedThreadId.slice('codex_'.length).trim();
             if (!externalThreadId) continue;
-            const mapped = selectChatThreadByExternalPreferLocalStmt.get(externalThreadId);
+            const mappedRaw = selectChatThreadByExternalPreferLocalStmt.get(externalThreadId, tenantId);
+            const mapped = rowBelongsToTenant(mappedRaw, authContext) ? mappedRaw : null;
             if (mapped?.thread_id) {
               knownSet.add(String(mapped.thread_id));
             }
           }
           if (knownThreadIds.length > 0) {
-            const candidates = syncWorkspaceScope === '*'
-              ? selectCodexThreadsAnyStmt.all()
-              : selectCodexThreadsByWorkspaceStmt.all(syncWorkspaceScope);
+            const candidates = syncWorkspaceScope === allWorkspaceForTenant(authContext)
+              ? db.prepare(`
+                  SELECT thread_id FROM chat_threads
+                  WHERE source = 'codex' AND status != 'deleted' AND workspace LIKE ? AND tenant_id = ?
+                `).all(`${tenantWorkspacePrefix(authContext)}%`, tenantId)
+              : selectCodexThreadsByWorkspaceStmt.all(syncWorkspaceScope, tenantId);
             for (const row of candidates) {
               const threadId = String(row.thread_id || '');
               if (!threadId || knownSet.has(threadId)) continue;
-              const changed = markThreadDeletedStmt.run(ts, threadId);
+              const changed = markThreadDeletedStmt.run(ts, threadId, tenantId);
               if (changed.changes > 0) pruned += 1;
             }
           }
 
-          const placeholders = syncWorkspaceScope === '*'
-            ? selectIdleIosPlaceholderThreadsAnyStmt.all()
-            : selectIdleIosPlaceholderThreadsByWorkspaceStmt.all(syncWorkspaceScope);
+          const placeholders = syncWorkspaceScope === allWorkspaceForTenant(authContext)
+            ? db.prepare(`
+                SELECT thread_id, updated_at FROM chat_threads
+                WHERE workspace LIKE ?
+                  AND source = 'ios'
+                  AND status = 'idle'
+                  AND tenant_id = ?
+                  AND (external_thread_id IS NULL OR TRIM(external_thread_id) = '')
+              `).all(`${tenantWorkspacePrefix(authContext)}%`, tenantId)
+            : selectIdleIosPlaceholderThreadsByWorkspaceStmt.all(syncWorkspaceScope, tenantId);
           const pruneBeforeMs = Date.now() - IOS_PLACEHOLDER_PRUNE_MINUTES * 60_000;
           for (const row of placeholders) {
             const threadId = String(row.thread_id || '');
             if (!threadId || knownSet.has(threadId)) continue;
             const updatedMs = Date.parse(String(row.updated_at || ''));
             if (Number.isFinite(updatedMs) && updatedMs >= pruneBeforeMs) continue;
-            const eventCount = Number(countChatEventsByThreadStmt.get(threadId)?.count || 0);
-            const jobCount = Number(countChatJobsByThreadStmt.get(threadId)?.count || 0);
+            const eventCount = Number(countChatEventsByThreadStmt.get(threadId, tenantId)?.count || 0);
+            const jobCount = Number(countChatJobsByThreadStmt.get(threadId, tenantId)?.count || 0);
             if (eventCount > 0 || jobCount > 0) continue;
-            const changed = markThreadDeletedStmt.run(ts, threadId);
+            const changed = markThreadDeletedStmt.run(ts, threadId, tenantId);
             if (changed.changes > 0) pruned += 1;
           }
         }
@@ -3137,12 +3505,18 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/auth/relogin/request') {
       const body = await parseBody(req);
-      const workspace = isAllWorkspaces(body.workspace) ? '*' : workspaceFrom(body.workspace);
+      const workspace = isAllWorkspaces(body.workspace)
+        ? allWorkspaceForTenant(authContext)
+        : workspaceFrom(body.workspace, authContext);
       const requestedBy = String(body.requested_by || 'ios-user').slice(0, 120);
       const requestId = randomId('auth_relogin');
       const ts = nowIso();
-      insertAuthReloginRequestStmt.run(requestId, workspace, requestedBy, ts, ts);
-      const row = selectAuthReloginRequestStmt.get(requestId);
+      insertAuthReloginRequestStmt.run(requestId, workspace, requestedBy, ts, ts, tenantId);
+      const row = selectAuthReloginRequestStmt.get(requestId, tenantId);
+      if (!rowBelongsToTenant(row, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
+        return;
+      }
       json(res, 200, { ok: true, request: normalizeAuthReloginRequest(row), ts });
       return;
     }
@@ -3150,8 +3524,8 @@ const server = http.createServer(async (req, res) => {
     const authReloginRequestMatch = url.pathname.match(/^\/codex-iphone-connector\/auth\/relogin\/request\/([^/]+)$/);
     if (req.method === 'GET' && authReloginRequestMatch) {
       const requestId = decodeURIComponent(authReloginRequestMatch[1]);
-      const row = selectAuthReloginRequestStmt.get(requestId);
-      if (!row) {
+      const row = selectAuthReloginRequestStmt.get(requestId, tenantId);
+      if (!row || !rowBelongsToTenant(row, authContext)) {
         json(res, 404, { ok: false, error: 'request_not_found' });
         return;
       }
@@ -3160,6 +3534,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/auth/relogin/claim') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       if (!connectorId) {
@@ -3167,19 +3545,21 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const claimAll = isAllWorkspaces(body.workspace);
-      const workspace = workspaceFrom(body.workspace);
+      const workspace = workspaceFrom(body.workspace, authContext);
+      const allWorkspace = allWorkspaceForTenant(authContext);
+      const workspacePrefix = tenantWorkspacePrefix(authContext);
       const ts = nowIso();
       let claimed = null;
 
       db.exec('BEGIN');
       try {
         const pending = claimAll
-          ? selectPendingAnyAuthReloginStmt.get()
-          : selectPendingAuthReloginForWorkspaceStmt.get(workspace);
+          ? selectPendingAnyAuthReloginStmt.get(tenantId, `${workspacePrefix}%`)
+          : selectPendingAuthReloginForWorkspaceStmt.get(tenantId, workspace, allWorkspace);
         if (pending) {
-          const result = claimAuthReloginRequestStmt.run(connectorId, ts, ts, pending.request_id);
+          const result = claimAuthReloginRequestStmt.run(connectorId, ts, ts, pending.request_id, tenantId);
           if (result.changes === 1) {
-            claimed = selectAuthReloginRequestStmt.get(pending.request_id);
+            claimed = selectAuthReloginRequestStmt.get(pending.request_id, tenantId);
           }
         }
         db.exec('COMMIT');
@@ -3190,13 +3570,17 @@ const server = http.createServer(async (req, res) => {
 
       json(res, 200, {
         ok: true,
-        request: claimed ? normalizeAuthReloginRequest(claimed) : null,
+        request: claimed && rowBelongsToTenant(claimed, authContext) ? normalizeAuthReloginRequest(claimed) : null,
         ts,
       });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/auth/relogin/progress') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       const requestId = String(body.request_id || '').trim();
@@ -3209,8 +3593,8 @@ const server = http.createServer(async (req, res) => {
         badRequest(res, 'status must be claimed, awaiting_user, or running');
         return;
       }
-      const current = selectAuthReloginRequestStmt.get(requestId);
-      if (!current) {
+      const current = selectAuthReloginRequestStmt.get(requestId, tenantId);
+      if (!current || !rowBelongsToTenant(current, authContext)) {
         json(res, 404, { ok: false, error: 'request_not_found' });
         return;
       }
@@ -3239,17 +3623,26 @@ const server = http.createServer(async (req, res) => {
         ts,
         requestId,
         connectorId,
+        tenantId,
       );
       if (result.changes !== 1) {
         json(res, 409, { ok: false, error: 'request_not_claimed_by_connector' });
         return;
       }
-      const updated = selectAuthReloginRequestStmt.get(requestId);
+      const updated = selectAuthReloginRequestStmt.get(requestId, tenantId);
+      if (!updated || !rowBelongsToTenant(updated, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
+        return;
+      }
       json(res, 200, { ok: true, request: normalizeAuthReloginRequest(updated), ts });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/auth/relogin/complete') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       const requestId = String(body.request_id || '').trim();
@@ -3267,12 +3660,16 @@ const server = http.createServer(async (req, res) => {
         ? String(body.error || 'relogin_failed').slice(0, 500)
         : (body.error == null ? null : String(body.error || '').slice(0, 500));
       const ts = nowIso();
-      const result = completeAuthReloginRequestStmt.run(status, message, error, ts, ts, requestId, connectorId);
+      const result = completeAuthReloginRequestStmt.run(status, message, error, ts, ts, requestId, connectorId, tenantId);
       if (result.changes !== 1) {
         json(res, 409, { ok: false, error: 'request_not_claimed_by_connector' });
         return;
       }
-      const row = selectAuthReloginRequestStmt.get(requestId);
+      const row = selectAuthReloginRequestStmt.get(requestId, tenantId);
+      if (!row || !rowBelongsToTenant(row, authContext)) {
+        forbidden(res, 'request_tenant_mismatch');
+        return;
+      }
       json(res, 200, { ok: true, request: normalizeAuthReloginRequest(row), ts });
       return;
     }
@@ -3280,11 +3677,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/codex-iphone-connector/status') {
       const workspaceParam = url.searchParams.get('workspace');
       const includeAll = isAllWorkspaces(workspaceParam);
-      const workspace = workspaceFrom(workspaceParam);
-      const status = unifiedStatusForScope(workspace, includeAll);
+      const workspace = workspaceFrom(workspaceParam, authContext);
+      const allWorkspace = allWorkspaceForTenant(authContext);
+      const workspacePrefix = tenantWorkspacePrefix(authContext);
+      const status = unifiedStatusForScope(workspace, includeAll, allWorkspace, workspacePrefix, authContext);
       json(res, 200, {
         ok: true,
-        workspace: includeAll ? '*' : workspace,
+        workspace: includeAll ? '*' : publicWorkspaceName(workspace),
         status,
         ts: nowIso(),
       });
@@ -3292,7 +3691,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/codex-iphone-connector/workspaces') {
-      const workspaces = collectKnownWorkspaces();
+      const workspaces = collectKnownWorkspaces(authContext);
       json(res, 200, { ok: true, workspaces, ts: nowIso() });
       return;
     }
@@ -3300,56 +3699,58 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/codex-iphone-connector/usage/summary') {
       const workspaceParam = url.searchParams.get('workspace');
       const includeAll = isAllWorkspaces(workspaceParam);
-      const workspace = workspaceFrom(workspaceParam);
+      const workspace = workspaceFrom(workspaceParam, authContext);
+      const workspacePrefix = tenantWorkspacePrefix(authContext);
 
       const jobRows = includeAll
         ? db.prepare(`
             SELECT status, COUNT(*) AS count
             FROM chat_jobs
+            WHERE workspace LIKE ? AND tenant_id = ?
             GROUP BY status
-          `).all()
+          `).all(`${workspacePrefix}%`, tenantId)
         : db.prepare(`
             SELECT status, COUNT(*) AS count
             FROM chat_jobs
-            WHERE workspace = ?
+            WHERE workspace = ? AND tenant_id = ?
             GROUP BY status
-          `).all(workspace);
+          `).all(workspace, tenantId);
 
       const threadCount = includeAll
-        ? Number(db.prepare(`SELECT COUNT(*) AS count FROM chat_threads`).get().count || 0)
-        : Number(db.prepare(`SELECT COUNT(*) AS count FROM chat_threads WHERE workspace = ?`).get(workspace).count || 0);
+        ? Number(db.prepare(`SELECT COUNT(*) AS count FROM chat_threads WHERE workspace LIKE ? AND tenant_id = ?`).get(`${workspacePrefix}%`, tenantId).count || 0)
+        : Number(db.prepare(`SELECT COUNT(*) AS count FROM chat_threads WHERE workspace = ? AND tenant_id = ?`).get(workspace, tenantId).count || 0);
 
       const tokenRows = includeAll
         ? db.prepare(`
             SELECT thread_id, payload_json, ts
             FROM chat_events
-            WHERE type = 'rpc.thread.tokenUsage.updated'
+            WHERE workspace LIKE ? AND tenant_id = ? AND type = 'rpc.thread.tokenUsage.updated'
             ORDER BY id DESC
             LIMIT 6000
-          `).all()
+          `).all(`${workspacePrefix}%`, tenantId)
         : db.prepare(`
             SELECT thread_id, payload_json, ts
             FROM chat_events
-            WHERE workspace = ? AND type = 'rpc.thread.tokenUsage.updated'
+            WHERE workspace = ? AND tenant_id = ? AND type = 'rpc.thread.tokenUsage.updated'
             ORDER BY id DESC
             LIMIT 6000
-          `).all(workspace);
+          `).all(workspace, tenantId);
 
       const rateLimitRows = includeAll
         ? db.prepare(`
             SELECT payload_json, ts
             FROM chat_events
-            WHERE type LIKE '%token_count%' OR type LIKE '%rate_limit%' OR type = 'rpc.event_msg'
+            WHERE workspace LIKE ? AND tenant_id = ? AND (type LIKE '%token_count%' OR type LIKE '%rate_limit%' OR type = 'rpc.event_msg')
             ORDER BY id DESC
             LIMIT 1500
-          `).all()
+          `).all(`${workspacePrefix}%`, tenantId)
         : db.prepare(`
             SELECT payload_json, ts
             FROM chat_events
-            WHERE workspace = ? AND (type LIKE '%token_count%' OR type LIKE '%rate_limit%' OR type = 'rpc.event_msg')
+            WHERE workspace = ? AND tenant_id = ? AND (type LIKE '%token_count%' OR type LIKE '%rate_limit%' OR type = 'rpc.event_msg')
             ORDER BY id DESC
             LIMIT 1500
-          `).all(workspace);
+          `).all(workspace, tenantId);
 
       const seenThreads = new Set();
       let latestUsageUpdatedAt = null;
@@ -3402,7 +3803,7 @@ const server = http.createServer(async (req, res) => {
       let rateLimitsSource = rateLimitWindows.length ? 'token_count' : null;
       let fallbackMaxTotalTokens = null;
       if (!rateLimitWindows.length) {
-        const fallback = rateLimitFallbackFromRolloutFiles(workspace, includeAll);
+        const fallback = rateLimitFallbackFromRolloutFiles(publicWorkspaceName(workspace), includeAll);
         if (fallback.windows.length) {
           rateLimitWindows = fallback.windows;
           rateLimitsSource = 'session_jsonl.token_count';
@@ -3461,7 +3862,7 @@ const server = http.createServer(async (req, res) => {
 
       json(res, 200, {
         ok: true,
-        workspace: includeAll ? '*' : workspace,
+        workspace: includeAll ? '*' : publicWorkspaceName(workspace),
         threads_count: threadCount,
         jobs,
         usage: usageTotals,
@@ -3476,6 +3877,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/jobs/claim') {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
       if (!connectorId) {
@@ -3483,15 +3888,33 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const claimAll = isAllWorkspaces(body.workspace);
-      const workspace = workspaceFrom(body.workspace);
+      const workspace = workspaceFrom(body.workspace, authContext, { allowAll: true });
+      const workspacePrefix = tenantWorkspacePrefix(authContext);
       const ts = nowIso();
 
       let claimed = null;
       db.exec('BEGIN IMMEDIATE');
       try {
-        const queued = claimAll ? selectQueuedAnyChatJobStmt.get() : selectQueuedChatJobStmt.get(workspace);
+        const queued = claimAll
+          ? db.prepare(`
+              SELECT queued.*
+              FROM chat_jobs AS queued
+              WHERE queued.status = 'queued'
+                AND queued.workspace LIKE ?
+                AND queued.tenant_id = ?
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM chat_jobs AS active
+                  WHERE active.thread_id = queued.thread_id
+                    AND active.tenant_id = queued.tenant_id
+                    AND active.status IN ('claimed', 'running')
+                )
+              ORDER BY queued.created_at ASC
+              LIMIT 1
+            `).get(`${workspacePrefix}%`, tenantId)
+          : selectQueuedChatJobStmt.get(workspace, tenantId);
         if (queued) {
-          const result = claimChatJobStmt.run(connectorId, ts, queued.job_id);
+          const result = claimChatJobStmt.run(connectorId, ts, queued.job_id, tenantId);
           if (result.changes === 1) claimed = selectChatJobStmt.get(queued.job_id);
         }
         db.exec('COMMIT');
@@ -3504,7 +3927,7 @@ const server = http.createServer(async (req, res) => {
         json(res, 200, { ok: true, job: null, ts });
         return;
       }
-      updateThreadStatusStmt.run('claimed', ts, claimed.thread_id);
+      updateThreadStatusStmt.run('claimed', ts, claimed.thread_id, tenantId);
       appendChatEvent({
         threadId: claimed.thread_id,
         workspace: claimed.workspace,
@@ -3523,10 +3946,14 @@ const server = http.createServer(async (req, res) => {
 
     const connectorControlMatch = url.pathname.match(/^\/codex-iphone-connector\/jobs\/([^/]+)\/control$/);
     if (req.method === 'GET' && connectorControlMatch) {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const jobId = decodeURIComponent(connectorControlMatch[1]);
       const connectorId = String(url.searchParams.get('connector_id') || '').trim();
       const job = selectChatJobStmt.get(jobId);
-      if (!job) {
+      if (!job || !rowBelongsToTenant(job, authContext)) {
         json(res, 404, { ok: false, error: 'job_not_found' });
         return;
       }
@@ -3548,6 +3975,10 @@ const server = http.createServer(async (req, res) => {
 
     const connectorEventsMatch = url.pathname.match(/^\/codex-iphone-connector\/jobs\/([^/]+)\/events$/);
     if (req.method === 'POST' && connectorEventsMatch) {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const jobId = decodeURIComponent(connectorEventsMatch[1]);
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
@@ -3556,7 +3987,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const job = selectChatJobStmt.get(jobId);
-      if (!job) {
+      if (!job || !rowBelongsToTenant(job, authContext)) {
         json(res, 404, { ok: false, error: 'job_not_found' });
         return;
       }
@@ -3572,9 +4003,9 @@ const server = http.createServer(async (req, res) => {
       const events = Array.isArray(body.events) ? body.events : [];
       const ts = nowIso();
       const wasRunning = String(job.status || '').toLowerCase() === 'running';
-      markChatJobRunningStmt.run(ts, jobId);
-      if (body.turn_id) updateChatJobTurnStmt.run(String(body.turn_id), ts, jobId);
-      if (body.external_thread_id) updateThreadExternalIdStmt.run(String(body.external_thread_id), ts, job.thread_id);
+      markChatJobRunningStmt.run(ts, jobId, tenantId);
+      if (body.turn_id) updateChatJobTurnStmt.run(String(body.turn_id), ts, jobId, tenantId);
+      if (body.external_thread_id) updateThreadExternalIdStmt.run(String(body.external_thread_id), ts, job.thread_id, tenantId);
 
       let inserted = 0;
       let lastSeq = null;
@@ -3615,14 +4046,18 @@ const server = http.createServer(async (req, res) => {
         try { db.exec('ROLLBACK'); } catch {}
         throw err;
       }
-      touchChatJobStmt.run(ts, jobId);
-      updateThreadStatusStmt.run('running', ts, job.thread_id);
+      touchChatJobStmt.run(ts, jobId, tenantId);
+      updateThreadStatusStmt.run('running', ts, job.thread_id, tenantId);
       json(res, 200, { ok: true, inserted, last_seq: lastSeq, ts });
       return;
     }
 
     const connectorCompleteMatch = url.pathname.match(/^\/codex-iphone-connector\/jobs\/([^/]+)\/complete$/);
     if (req.method === 'POST' && connectorCompleteMatch) {
+      if (!actorAllowed(authContext, ['connector'])) {
+        forbidden(res, 'connector_token_required');
+        return;
+      }
       const jobId = decodeURIComponent(connectorCompleteMatch[1]);
       const body = await parseBody(req);
       const connectorId = String(body.connector_id || '').trim();
@@ -3636,7 +4071,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const job = selectChatJobStmt.get(jobId);
-      if (!job) {
+      if (!job || !rowBelongsToTenant(job, authContext)) {
         json(res, 404, { ok: false, error: 'job_not_found' });
         return;
       }
@@ -3662,11 +4097,11 @@ const server = http.createServer(async (req, res) => {
 
       const ts = nowIso();
       const turnId = body.turn_id || job.turn_id || null;
-      if (body.external_thread_id) updateThreadExternalIdStmt.run(String(body.external_thread_id), ts, job.thread_id);
+      if (body.external_thread_id) updateThreadExternalIdStmt.run(String(body.external_thread_id), ts, job.thread_id, tenantId);
 
       if (finalStatus === 'completed') {
-        completeChatJobStmt.run(turnId, ts, jobId);
-        updateThreadStatusStmt.run('idle', ts, job.thread_id);
+        completeChatJobStmt.run(turnId, ts, jobId, tenantId);
+        updateThreadStatusStmt.run('idle', ts, job.thread_id, tenantId);
         appendChatEvent({
           threadId: job.thread_id,
           workspace: job.workspace,
@@ -3680,8 +4115,8 @@ const server = http.createServer(async (req, res) => {
       } else if (finalStatus === 'interrupted') {
         const errorCode = body.error_code || 'TURN_INTERRUPTED';
         const errorMessage = body.error_message || 'turn interrupted';
-        interruptChatJobStmt.run(turnId, errorCode, errorMessage, ts, jobId);
-        updateThreadStatusStmt.run('interrupted', ts, job.thread_id);
+        interruptChatJobStmt.run(turnId, errorCode, errorMessage, ts, jobId, tenantId);
+        updateThreadStatusStmt.run('interrupted', ts, job.thread_id, tenantId);
         appendChatEvent({
           threadId: job.thread_id,
           workspace: job.workspace,
@@ -3695,8 +4130,8 @@ const server = http.createServer(async (req, res) => {
       } else if (finalStatus === 'timeout') {
         const errorCode = body.error_code || 'TURN_TIMEOUT';
         const errorMessage = body.error_message || 'turn timed out';
-        timeoutChatJobStmt.run(turnId, errorCode, errorMessage, ts, jobId);
-        updateThreadStatusStmt.run('failed', ts, job.thread_id);
+        timeoutChatJobStmt.run(turnId, errorCode, errorMessage, ts, jobId, tenantId);
+        updateThreadStatusStmt.run('failed', ts, job.thread_id, tenantId);
         appendChatEvent({
           threadId: job.thread_id,
           workspace: job.workspace,
@@ -3710,8 +4145,8 @@ const server = http.createServer(async (req, res) => {
       } else {
         const errorCode = body.error_code || 'JOB_FAILED';
         const errorMessage = body.error_message || 'job failed';
-        failChatJobStmt.run(turnId, errorCode, errorMessage, ts, jobId);
-        updateThreadStatusStmt.run('failed', ts, job.thread_id);
+        failChatJobStmt.run(turnId, errorCode, errorMessage, ts, jobId, tenantId);
+        updateThreadStatusStmt.run('failed', ts, job.thread_id, tenantId);
         appendChatEvent({
           threadId: job.thread_id,
           workspace: job.workspace,
@@ -3736,32 +4171,38 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/codex-iphone-connector/sessions/backfill/start') {
       const body = await parseBody(req);
-      const workspace = isAllWorkspaces(body.workspace) ? '*' : workspaceFrom(body.workspace);
+      const workspace = isAllWorkspaces(body.workspace)
+        ? allWorkspaceForTenant(authContext)
+        : workspaceFrom(body.workspace, authContext);
       const maxFiles = clampInt(body.limit_files, 1, 20_000, 2_000);
       const runId = randomId('backfill');
       const startedAt = nowIso();
 
-      insertBackfillRunStmt.run(runId, workspace, 'running', 0, 0, startedAt, null, null);
+      insertBackfillRunStmt.run(runId, workspace, 'running', 0, 0, startedAt, null, null, tenantId);
       try {
-        const result = runBackfill(workspace, maxFiles);
-        completeBackfillRunStmt.run('completed', result.scanned, result.imported, nowIso(), null, runId);
+        const result = runBackfill(workspace, maxFiles, authContext);
+        completeBackfillRunStmt.run('completed', result.scanned, result.imported, nowIso(), null, runId, tenantId);
       } catch (err) {
-        completeBackfillRunStmt.run('failed', 0, 0, nowIso(), String(err.message || err), runId);
+        completeBackfillRunStmt.run('failed', 0, 0, nowIso(), String(err.message || err), runId, tenantId);
       }
 
-      const run = selectBackfillRunStmt.get(runId);
+      const run = selectBackfillRunStmt.get(runId, tenantId);
+      if (!rowBelongsToTenant(run, authContext)) {
+        forbidden(res, 'run_tenant_mismatch');
+        return;
+      }
       json(res, 200, { ok: true, run: normalizeBackfillRun(run), ts: nowIso() });
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/codex-iphone-connector/sessions/backfill/status') {
       const workspace = isAllWorkspaces(url.searchParams.get('workspace'))
-        ? '*'
-        : workspaceFrom(url.searchParams.get('workspace'));
+        ? allWorkspaceForTenant(authContext)
+        : workspaceFrom(url.searchParams.get('workspace'), authContext);
       const runId = url.searchParams.get('run_id');
       if (runId) {
-        const row = selectBackfillRunStmt.get(runId);
-        if (!row) {
+        const row = selectBackfillRunStmt.get(runId, tenantId);
+        if (!row || !rowBelongsToTenant(row, authContext)) {
           json(res, 404, { ok: false, error: 'run_not_found' });
           return;
         }
@@ -3769,7 +4210,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const limit = clampInt(url.searchParams.get('limit'), 1, 200, 20);
-      const runs = selectBackfillRunsStmt.all(workspace, limit).map(normalizeBackfillRun);
+      const runs = workspace === allWorkspaceForTenant(authContext)
+        ? db.prepare(`
+            SELECT * FROM session_backfill_runs
+            WHERE workspace LIKE ? AND tenant_id = ?
+            ORDER BY started_at DESC
+            LIMIT ?
+          `).all(`${tenantWorkspacePrefix(authContext)}%`, tenantId, limit).map(normalizeBackfillRun)
+        : selectBackfillRunsStmt.all(workspace, tenantId, limit).map(normalizeBackfillRun);
       json(res, 200, { ok: true, runs, ts: nowIso() });
       return;
     }
